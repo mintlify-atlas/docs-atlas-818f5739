@@ -1,0 +1,132 @@
+{
+  "projectType": "framework",
+  "projectName": "RuneLite",
+  "projectDescription": "Open source Old School RuneScape client with a powerful plugin system for game enhancements.",
+  "theme": "aspen",
+  "primaryColor": "#d19466",
+  "lightColor": "#829096",
+  "darkColor": "#18232a",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/architecture",
+              "concepts/plugin-system",
+              "concepts/event-bus",
+              "concepts/configuration",
+              "concepts/ui-overlays"
+            ]
+          },
+          {
+            "group": "Plugin Development",
+            "pages": [
+              "plugins/creating-plugins",
+              "plugins/plugin-lifecycle",
+              "plugins/using-the-api",
+              "plugins/annotations",
+              "plugins/overlays",
+              "plugins/config-management",
+              "plugins/examples",
+              "plugins/best-practices"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/external-plugins",
+              "advanced/cache-library",
+              "advanced/deobfuscation",
+              "advanced/performance"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core API",
+            "pages": [
+              "api/client",
+              "api/game-state",
+              "api/player",
+              "api/npc",
+              "api/world"
+            ]
+          },
+          {
+            "group": "Game Objects",
+            "pages": [
+              "api/game-objects",
+              "api/items",
+              "api/inventory",
+              "api/widgets",
+              "api/scene"
+            ]
+          },
+          {
+            "group": "Events",
+            "pages": [
+              "api/events-overview",
+              "api/event-types",
+              "api/event-handling"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": [
+              "api/perspective",
+              "api/text-utils",
+              "api/color-utils",
+              "api/constants"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Extensive plugin system with 130+ built-in plugins",
+    "Comprehensive game client API for OSRS",
+    "Event-driven architecture with EventBus",
+    "Overlay system for custom UI rendering",
+    "Configuration management per plugin",
+    "Cache library for reading game data",
+    "External plugin support",
+    "Developer tools and debugging"
+  ],
+  "publicApiSurface": [
+    "Client",
+    "Player",
+    "NPC",
+    "GameObject",
+    "Item",
+    "Widget",
+    "Plugin",
+    "PluginDescriptor",
+    "EventBus",
+    "ConfigManager",
+    "OverlayManager",
+    "ChatMessageManager",
+    "ItemManager",
+    "NPCManager",
+    "Perspective",
+    "WorldView",
+    "Scene",
+    "Tile",
+    "MenuEntry",
+    "ScriptEvent"
+  ]
+}
