@@ -1,0 +1,493 @@
+---
+title: 'Game Objects'
+description: 'GameObject, TileObject, and other object interfaces'
+---
+
+Game objects represent interactive objects in the RuneScape world, such as trees, doors, anvils, and more. The `GameObject` interface extends `TileObject` and provides methods for interacting with these objects.
+
+## Object Hierarchy
+
+- **TileObject** - Base interface for all objects on tiles
+  - **GameObject** - Standard game objects (trees, anvils, etc.)
+  - **WallObject** - Walls and barriers
+  - **DecorativeObject** - Decorative scenery
+  - **GroundObject** - Ground decorations and floors
+
+## Finding Game Objects
+
+### From Scene Tiles
+
+```java
+WorldView worldView = client.getTopLevelWorldView();
+Scene scene = worldView.getScene();
+Tile[][][] tiles = scene.getTiles();
+
+int plane = worldView.getPlane();
+for (int x = 0; x < Constants.SCENE_SIZE; x++) {
+    for (int y = 0; y < Constants.SCENE_SIZE; y++) {
+        Tile tile = tiles[plane][x][y];
+        if (tile == null) continue;
+        
+        // Get all game objects on this tile
+        GameObject[] gameObjects = tile.getGameObjects();
+        for (GameObject obj : gameObjects) {
+            if (obj != null) {
+                processGameObject(obj);
+            }
+        }
+    }
+}
+```
+
+### Finding Specific Objects
+
+```java
+public GameObject findNearest(int objectId) {
+    WorldView worldView = client.getTopLevelWorldView();
+    Scene scene = worldView.getScene();
+    Tile[][][] tiles = scene.getTiles();
+    
+    Player player = client.getLocalPlayer();
+    if (player == null) return null;
+    
+    WorldPoint playerLoc = player.getWorldLocation();
+    int plane = playerLoc.getPlane();
+    
+    GameObject nearest = null;
+    int nearestDist = Integer.MAX_VALUE;
+    
+    for (int x = 0; x < Constants.SCENE_SIZE; x++) {
+        for (int y = 0; y < Constants.SCENE_SIZE; y++) {
+            Tile tile = tiles[plane][x][y];
+            if (tile == null) continue;
+            
+            for (GameObject obj : tile.getGameObjects()) {
+                if (obj != null && obj.getId() == objectId) {
+                    int dist = obj.getWorldLocation().distanceTo(playerLoc);
+                    if (dist < nearestDist) {
+                        nearest = obj;
+                        nearestDist = dist;
+                    }
+                }
+            }
+        }
+    }
+    
+    return nearest;
+}
+```
+
+## GameObject Interface
+
+### getId
+
+<ParamField path="Returns" type="int">
+  The object ID
+</ParamField>
+
+Gets the ID of the object.
+
+```java
+int objectId = gameObject.getId();
+if (objectId == ObjectID.TREE) {
+    // This is a regular tree
+}
+```
+
+### Size
+
+<ParamField path="Returns" type="int">
+  The size in tiles
+</ParamField>
+
+Gets the size of the object on the X or Y axis.
+
+```java
+int sizeX = gameObject.sizeX();
+int sizeY = gameObject.sizeY();
+// Most objects are 1x1, but some are larger (e.g., 2x2, 3x3)
+```
+
+### getSceneMinLocation
+
+<ParamField path="Returns" type="Point">
+  Minimum scene coordinate
+</ParamField>
+
+Gets the minimum X and Y scene coordinate for this game object.
+
+```java
+Point minLoc = gameObject.getSceneMinLocation();
+int minX = minLoc.getX();
+int minY = minLoc.getY();
+```
+
+### getSceneMaxLocation
+
+<ParamField path="Returns" type="Point">
+  Maximum scene coordinate
+</ParamField>
+
+Gets the maximum X and Y scene coordinate. This differs from min location for objects larger than 1 tile.
+
+```java
+Point maxLoc = gameObject.getSceneMaxLocation();
+int maxX = maxLoc.getX();
+int maxY = maxLoc.getY();
+```
+
+### getOrientation
+
+<ParamField path="Returns" type="int">
+  The orientation (0-3)
+</ParamField>
+
+Gets the orientation of the object.
+
+```java
+int orientation = gameObject.getOrientation();
+// 0 = South, 1 = West, 2 = North, 3 = East
+```
+
+### getModelOrientation
+
+<ParamField path="Returns" type="int">
+  The model orientation in JAU
+</ParamField>
+
+Gets the orientation of the model in JAU. Typically 0 for objects since models are pre-oriented.
+
+```java
+int modelOrientation = gameObject.getModelOrientation();
+```
+
+### getRenderable
+
+<ParamField path="Returns" type="Renderable" nullable>
+  The renderable model
+</ParamField>
+
+Gets the renderable model for this object.
+
+```java
+Renderable renderable = gameObject.getRenderable();
+if (renderable instanceof Model) {
+    Model model = (Model) renderable;
+    // Access model data
+}
+```
+
+### getConfig
+
+<ParamField path="Returns" type="int">
+  Bitfield containing configuration flags
+</ParamField>
+
+Gets a bitfield containing various flags:
+
+```java
+int config = gameObject.getConfig();
+int objectType = config & 31;           // bits 0-4
+int orientation = (config >>> 6) & 3;   // bits 6-7
+boolean supportsItems = ((config >>> 8) & 1) == 1; // bit 8
+```
+
+## TileObject Interface (Base)
+
+### Location Methods
+
+```java
+// Local coordinates
+int x = tileObject.getX();
+int y = tileObject.getY();
+int z = tileObject.getZ();
+
+// Plane
+int plane = tileObject.getPlane();
+
+// World location (center)
+WorldPoint worldLoc = tileObject.getWorldLocation();
+
+// Local location (center)
+LocalPoint localLoc = tileObject.getLocalLocation();
+
+// WorldView
+WorldView worldView = tileObject.getWorldView();
+```
+
+### getHash
+
+<ParamField path="Returns" type="long">
+  Bitfield containing object data
+</ParamField>
+
+Gets a bitfield containing various data:
+
+```java
+long hash = tileObject.getHash();
+
+// Extract components:
+int worldViewId = (int)((hash >> 52) & 4095);
+int id = (int)((hash >> 20) & 0xffffffffL);
+boolean isWall = ((hash >> 19) & 1) == 1;
+int type = (int)((hash >> 16) & 7);
+int plane = (int)((hash >> 14) & 3);
+int sceneY = (int)((hash >> 7) & 127);
+int sceneX = (int)(hash & 127);
+```
+
+### Canvas Rendering
+
+```java
+// Get canvas location
+Point canvasLoc = tileObject.getCanvasLocation();
+Point canvasLocWithOffset = tileObject.getCanvasLocation(100); // z-offset
+
+// Get tile polygon
+Polygon tilePoly = tileObject.getCanvasTilePoly();
+if (tilePoly != null) {
+    graphics.draw(tilePoly);
+}
+
+// Get clickbox
+Shape clickbox = tileObject.getClickbox();
+if (clickbox != null) {
+    graphics.draw(clickbox);
+}
+
+// Text location
+Point textLoc = tileObject.getCanvasTextLocation(graphics, "Text", 100);
+if (textLoc != null) {
+    graphics.drawString("Text", textLoc.getX(), textLoc.getY());
+}
+
+// Minimap location
+Point minimapLoc = tileObject.getMinimapLocation();
+```
+
+### Action Overrides
+
+```java
+// Get action text override
+String action = tileObject.getOpOverride(1); // Index 0-4
+
+// Check if action is shown
+boolean shown = tileObject.isOpShown(1);
+```
+
+## Other Object Types
+
+### WallObject
+
+Walls and barriers:
+
+```java
+WallObject wall = tile.getWallObject();
+if (wall != null) {
+    int id = wall.getId();
+    int config = wall.getConfig();
+    WorldPoint loc = wall.getWorldLocation();
+}
+```
+
+### GroundObject
+
+Ground decorations:
+
+```java
+GroundObject groundObj = tile.getGroundObject();
+if (groundObj != null) {
+    int id = groundObj.getId();
+    Renderable renderable = groundObj.getRenderable();
+}
+```
+
+### DecorativeObject
+
+Decorative scenery:
+
+```java
+DecorativeObject decor = tile.getDecorativeObject();
+if (decor != null) {
+    int id = decor.getId();
+    int config = decor.getConfig();
+}
+```
+
+## Object Composition
+
+### getObjectDefinition
+
+Get definition/composition for an object:
+
+```java
+ObjectComposition objComp = client.getObjectDefinition(objectId);
+
+String name = objComp.getName();
+String[] actions = objComp.getActions();
+int[] impostorIds = objComp.getImpostorIds(); // Transformations
+int mapIconId = objComp.getMapIconId();
+int mapSceneId = objComp.getMapSceneId();
+
+// Check available actions
+for (int i = 0; i < actions.length; i++) {
+    String action = actions[i];
+    if (action != null) {
+        log.info("Action " + i + ": " + action);
+    }
+}
+```
+
+## Object Events
+
+### GameObjectSpawned
+
+```java
+@Subscribe
+public void onGameObjectSpawned(GameObjectSpawned event) {
+    GameObject gameObject = event.getGameObject();
+    Tile tile = event.getTile();
+    
+    int id = gameObject.getId();
+    if (id == ObjectID.BANK_BOOTH) {
+        log.info("Bank booth spawned at: " + gameObject.getWorldLocation());
+    }
+}
+```
+
+### GameObjectDespawned
+
+```java
+@Subscribe
+public void onGameObjectDespawned(GameObjectDespawned event) {
+    GameObject gameObject = event.getGameObject();
+    Tile tile = event.getTile();
+    
+    log.info("Object despawned: " + gameObject.getId());
+}
+```
+
+### GameObjectChanged
+
+```java
+@Subscribe
+public void onGameObjectChanged(GameObjectChanged event) {
+    Tile tile = event.getTile();
+    GameObject previous = event.getPrevious();
+    GameObject gameObject = event.getGameObject();
+    
+    log.info("Object changed from " + previous.getId() + 
+             " to " + gameObject.getId());
+}
+```
+
+## Example: Object Highlighter
+
+```java
+private final Set<GameObject> highlightedObjects = new HashSet<>();
+
+@Subscribe
+public void onGameObjectSpawned(GameObjectSpawned event) {
+    GameObject obj = event.getGameObject();
+    if (shouldHighlight(obj)) {
+        highlightedObjects.add(obj);
+    }
+}
+
+@Subscribe
+public void onGameObjectDespawned(GameObjectDespawned event) {
+    highlightedObjects.remove(event.getGameObject());
+}
+
+private boolean shouldHighlight(GameObject obj) {
+    ObjectComposition comp = client.getObjectDefinition(obj.getId());
+    if (comp == null) return false;
+    
+    String name = comp.getName();
+    if (name != null && name.equals("Tree")) {
+        return true;
+    }
+    
+    // Or by ID
+    if (obj.getId() == ObjectID.ANVIL) {
+        return true;
+    }
+    
+    return false;
+}
+
+@Override
+public Dimension render(Graphics2D graphics) {
+    for (GameObject obj : highlightedObjects) {
+        // Draw tile polygon
+        Polygon poly = obj.getCanvasTilePoly();
+        if (poly != null) {
+            graphics.setColor(Color.CYAN);
+            graphics.draw(poly);
+        }
+        
+        // Draw clickbox
+        Shape clickbox = obj.getClickbox();
+        if (clickbox != null) {
+            graphics.setColor(new Color(0, 255, 255, 100));
+            graphics.draw(clickbox);
+        }
+        
+        // Draw name
+        ObjectComposition comp = client.getObjectDefinition(obj.getId());
+        if (comp != null) {
+            Point textLoc = obj.getCanvasTextLocation(
+                graphics,
+                comp.getName(),
+                100
+            );
+            if (textLoc != null) {
+                graphics.setColor(Color.WHITE);
+                graphics.drawString(
+                    comp.getName(),
+                    textLoc.getX(),
+                    textLoc.getY()
+                );
+            }
+        }
+    }
+    
+    return null;
+}
+```
+
+## Distance Calculations
+
+```java
+public int distanceTo(GameObject obj) {
+    Player player = client.getLocalPlayer();
+    if (player == null) return -1;
+    
+    WorldPoint playerLoc = player.getWorldLocation();
+    WorldPoint objLoc = obj.getWorldLocation();
+    
+    // Manhattan distance
+    return objLoc.distanceTo(playerLoc);
+}
+
+public boolean isWithinDistance(GameObject obj, int maxDistance) {
+    return distanceTo(obj) <= maxDistance;
+}
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Scene and Tiles" icon="map" href="/api/scene">
+    Scene and Tile interfaces
+  </Card>
+  <Card title="WorldView" icon="globe" href="/api/world">
+    WorldView interface
+  </Card>
+  <Card title="Events" icon="bolt" href="/api/event-types">
+    Object events
+  </Card>
+  <Card title="Perspective" icon="cube" href="/api/perspective">
+    Coordinate conversion
+  </Card>
+</CardGroup>

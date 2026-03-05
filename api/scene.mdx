@@ -1,0 +1,328 @@
+---
+title: 'Scene and Tile'
+description: 'Scene and Tile interfaces for accessing game world tiles and objects'
+---
+
+The `Scene` interface represents the 3D game world, while `Tile` represents individual tiles within the scene.
+
+## Scene Interface
+
+### Getting the Scene
+
+```java
+WorldView worldView = client.getTopLevelWorldView();
+Scene scene = worldView.getScene();
+```
+
+### getTiles
+
+<ParamField path="Returns" type="Tile[][][]">
+  4x104x104 array of tiles [plane][x][y]
+</ParamField>
+
+Gets all tiles in the scene.
+
+```java
+Tile[][][] tiles = scene.getTiles();
+int plane = worldView.getPlane();
+
+for (int x = 0; x < Constants.SCENE_SIZE; x++) {
+    for (int y = 0; y < Constants.SCENE_SIZE; y++) {
+        Tile tile = tiles[plane][x][y];
+        if (tile != null) {
+            // Process tile
+        }
+    }
+}
+```
+
+### getExtendedTiles
+
+<ParamField path="Returns" type="Tile[][][]">
+  Extended tiles array (larger than 104x104)
+</ParamField>
+
+Gets the extended scene tiles (when extended scene size is enabled).
+
+```java
+Tile[][][] extendedTiles = scene.getExtendedTiles();
+```
+
+### Draw Distance
+
+```java
+int drawDistance = scene.getDrawDistance();
+scene.setDrawDistance(50); // Set to 50 tiles
+```
+
+### Min Level
+
+```java
+int minLevel = scene.getMinLevel();
+scene.setMinLevel(0); // Set minimum rendered plane
+```
+
+### Removing Objects
+
+```java
+// Remove a tile
+scene.removeTile(tile);
+
+// Remove a game object
+scene.removeGameObject(gameObject);
+```
+
+## Tile Interface
+
+### Location
+
+```java
+// World location
+WorldPoint worldLoc = tile.getWorldLocation();
+
+// Local location
+LocalPoint localLoc = tile.getLocalLocation();
+
+// Scene location
+Point sceneLoc = tile.getSceneLocation();
+
+// Plane
+int plane = tile.getPlane();
+int renderLevel = tile.getRenderLevel();
+```
+
+### Game Objects
+
+<ParamField path="Returns" type="GameObject[]">
+  Array of game objects on the tile
+</ParamField>
+
+Gets all game objects on the tile.
+
+```java
+GameObject[] gameObjects = tile.getGameObjects();
+for (GameObject obj : gameObjects) {
+    if (obj != null) {
+        int id = obj.getId();
+        ObjectComposition comp = client.getObjectDefinition(id);
+        // Process object
+    }
+}
+```
+
+### Wall Object
+
+<ParamField path="Returns" type="WallObject" nullable>
+  The wall object on this tile
+</ParamField>
+
+Gets the wall object.
+
+```java
+WallObject wall = tile.getWallObject();
+if (wall != null) {
+    int id = wall.getId();
+    // Process wall
+}
+```
+
+### Decorative Object
+
+<ParamField path="Returns" type="DecorativeObject" nullable>
+  The decorative object
+</ParamField>
+
+Gets the decoration on the tile.
+
+```java
+DecorativeObject decor = tile.getDecorativeObject();
+if (decor != null) {
+    int id = decor.getId();
+    // Process decoration
+}
+```
+
+### Ground Object
+
+<ParamField path="Returns" type="GroundObject" nullable>
+  The ground object
+</ParamField>
+
+Gets the ground layer object.
+
+```java
+GroundObject groundObj = tile.getGroundObject();
+if (groundObj != null) {
+    int id = groundObj.getId();
+    // Process ground object
+}
+
+// Set ground object
+tile.setGroundObject(groundObj);
+```
+
+### Ground Items
+
+<ParamField path="Returns" type="List<TileItem>">
+  List of items on the ground
+</ParamField>
+
+Gets all ground items on the tile.
+
+```java
+List<TileItem> groundItems = tile.getGroundItems();
+for (TileItem item : groundItems) {
+    int id = item.getId();
+    int quantity = item.getQuantity();
+    ItemComposition comp = client.getItemDefinition(id);
+    // Process ground item
+}
+```
+
+### Item Layer
+
+<ParamField path="Returns" type="ItemLayer" nullable>
+  The item layer
+</ParamField>
+
+Gets the item layer on the tile.
+
+```java
+ItemLayer itemLayer = tile.getItemLayer();
+if (itemLayer != null) {
+    // Access items
+}
+```
+
+### Tile Painting
+
+```java
+// Get scene tile paint
+SceneTilePaint paint = tile.getSceneTilePaint();
+if (paint != null) {
+    int texture = paint.getTexture();
+    int rgb = paint.getRBG();
+}
+
+// Set scene tile paint
+tile.setSceneTilePaint(paint);
+
+// Get scene tile model
+SceneTileModel model = tile.getSceneTileModel();
+if (model != null) {
+    int[][] faceX = model.getFaceX();
+    int[][] faceY = model.getFaceY();
+}
+
+// Set scene tile model
+tile.setSceneTileModel(model);
+```
+
+### Bridge
+
+<ParamField path="Returns" type="Tile" nullable>
+  The tile under this bridge
+</ParamField>
+
+Returns the tile under this one if this tile is a bridge.
+
+```java
+Tile bridge = tile.getBridge();
+if (bridge != null) {
+    // This tile is a bridge, bridge contains the tile underneath
+}
+```
+
+## Example: Tile Walker
+
+```java
+public void walkAllTiles() {
+    WorldView worldView = client.getTopLevelWorldView();
+    Scene scene = worldView.getScene();
+    Tile[][][] tiles = scene.getTiles();
+    int plane = worldView.getPlane();
+    
+    for (int x = 0; x < Constants.SCENE_SIZE; x++) {
+        for (int y = 0; y < Constants.SCENE_SIZE; y++) {
+            Tile tile = tiles[plane][x][y];
+            if (tile == null) continue;
+            
+            processTile(tile);
+        }
+    }
+}
+
+private void processTile(Tile tile) {
+    WorldPoint loc = tile.getWorldLocation();
+    
+    // Check game objects
+    for (GameObject obj : tile.getGameObjects()) {
+        if (obj != null) {
+            log.info("Object at " + loc + ": " + obj.getId());
+        }
+    }
+    
+    // Check ground items
+    for (TileItem item : tile.getGroundItems()) {
+        ItemComposition comp = client.getItemDefinition(item.getId());
+        log.info("Ground item at " + loc + ": " + comp.getName());
+    }
+    
+    // Check wall
+    WallObject wall = tile.getWallObject();
+    if (wall != null) {
+        log.info("Wall at " + loc + ": " + wall.getId());
+    }
+}
+```
+
+## Example: Find Nearest Tile With Object
+
+```java
+public Tile findNearestTileWithObject(int objectId) {
+    Player player = client.getLocalPlayer();
+    if (player == null) return null;
+    
+    WorldPoint playerLoc = player.getWorldLocation();
+    WorldView worldView = client.getTopLevelWorldView();
+    Scene scene = worldView.getScene();
+    Tile[][][] tiles = scene.getTiles();
+    int plane = playerLoc.getPlane();
+    
+    Tile nearest = null;
+    int nearestDist = Integer.MAX_VALUE;
+    
+    for (int x = 0; x < Constants.SCENE_SIZE; x++) {
+        for (int y = 0; y < Constants.SCENE_SIZE; y++) {
+            Tile tile = tiles[plane][x][y];
+            if (tile == null) continue;
+            
+            for (GameObject obj : tile.getGameObjects()) {
+                if (obj != null && obj.getId() == objectId) {
+                    int dist = tile.getWorldLocation().distanceTo(playerLoc);
+                    if (dist < nearestDist) {
+                        nearest = tile;
+                        nearestDist = dist;
+                    }
+                }
+            }
+        }
+    }
+    
+    return nearest;
+}
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="WorldView" icon="globe" href="/api/world">
+    WorldView interface
+  </Card>
+  <Card title="Game Objects" icon="cube" href="/api/game-objects">
+    GameObject and TileObject
+  </Card>
+  <Card title="Perspective" icon="eye" href="/api/perspective">
+    Coordinate conversion
+  </Card>
+</CardGroup>

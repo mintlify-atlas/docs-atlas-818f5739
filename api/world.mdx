@@ -1,0 +1,606 @@
+---
+title: 'World and WorldView'
+description: 'World data and WorldView interface for accessing game scenes and entities'
+---
+
+The `WorldView` interface provides access to the game world, including the scene, players, NPCs, and world entities. The `World` interface represents individual RuneScape worlds.
+
+## WorldView
+
+### Getting the WorldView
+
+The top-level WorldView contains the main game scene:
+
+```java
+WorldView worldView = client.getTopLevelWorldView();
+```
+
+### WorldView ID
+
+<ParamField path="Returns" type="int">
+  The world view ID, or -1 if this is the top level
+</ParamField>
+
+```java
+int id = worldView.getId();
+boolean isTopLevel = worldView.isTopLevel(); // true if ID == -1
+```
+
+### Scene
+
+<ParamField path="Returns" type="Scene">
+  The worldview's scene
+</ParamField>
+
+Gets the scene contained in this worldview.
+
+```java
+Scene scene = worldView.getScene();
+Tile[][][] tiles = scene.getTiles();
+```
+
+## Entities
+
+### players
+
+<ParamField path="Returns" type="IndexedObjectSet<Player>">
+  All players in this view
+</ParamField>
+
+Gets all players in the worldview.
+
+```java
+for (Player player : worldView.players()) {
+    if (player != null) {
+        // Process player
+        String name = player.getName();
+        WorldPoint location = player.getWorldLocation();
+    }
+}
+```
+
+### npcs
+
+<ParamField path="Returns" type="IndexedObjectSet<NPC>">
+  All NPCs in this view
+</ParamField>
+
+Gets all NPCs in the worldview.
+
+```java
+for (NPC npc : worldView.npcs()) {
+    if (npc != null) {
+        int id = npc.getId();
+        String name = npc.getName();
+    }
+}
+```
+
+### worldEntities
+
+<ParamField path="Returns" type="IndexedObjectSet<WorldEntity>">
+  All world entities in this view
+</ParamField>
+
+Gets all world entities in the worldview.
+
+```java
+for (WorldEntity entity : worldView.worldEntities()) {
+    if (entity != null) {
+        // Process world entity
+    }
+}
+```
+
+### worldViews
+
+<ParamField path="Returns" type="IndexedObjectSet<WorldView>">
+  Child worldviews
+</ParamField>
+
+Gets the worldviews of each world entity in this worldview.
+
+```java
+for (WorldView subView : worldView.worldViews()) {
+    if (subView != null) {
+        // Process sub-worldview
+    }
+}
+```
+
+## Coordinates and Plane
+
+### getPlane
+
+<ParamField path="Returns" type="int">
+  The current plane (0-3)
+</ParamField>
+
+Gets the current plane the player is on.
+
+```java
+int plane = worldView.getPlane();
+// 0 = ground level, 1 = first floor, etc.
+// Caves/dungeons are also plane 0 with different coordinates
+```
+
+### Base Coordinates
+
+<ParamField path="Returns" type="int">
+  The base X or Y coordinate
+</ParamField>
+
+Gets the world coordinate of tile (0, 0) in the scene.
+
+```java
+int baseX = worldView.getBaseX();
+int baseY = worldView.getBaseY();
+
+// Scene tile (sceneX, sceneY) = world coordinates (baseX + sceneX, baseY + sceneY)
+```
+
+### getSizeX / getSizeY
+
+<ParamField path="Returns" type="int">
+  The size of the world view
+</ParamField>
+
+Gets the size of the world view on the X or Y axis.
+
+```java
+int sizeX = worldView.getSizeX();
+int sizeY = worldView.getSizeY();
+// Typically 104x104 for normal scenes
+```
+
+## Tile Data
+
+### getTileHeights
+
+<ParamField path="Returns" type="int[][][]">
+  3D array of tile heights [plane][x][y]
+</ParamField>
+
+Gets the heights of tiles in the scene.
+
+```java
+int[][][] tileHeights = worldView.getTileHeights();
+int height = tileHeights[plane][x][y];
+```
+
+### getTileHeight
+
+<ParamField path="x" type="int" required>
+  Local X coordinate
+</ParamField>
+
+<ParamField path="y" type="int" required>
+  Local Y coordinate
+</ParamField>
+
+<ParamField path="maplevel" type="int" required>
+  Plane/map level
+</ParamField>
+
+<ParamField path="Returns" type="int">
+  Interpolated tile height
+</ParamField>
+
+Gets the tile height at coordinates, interpolating from adjacent tiles.
+
+```java
+LocalPoint lp = player.getLocalLocation();
+int height = worldView.getTileHeight(lp.getX(), lp.getY(), plane);
+```
+
+### getTileSettings
+
+<ParamField path="Returns" type="byte[][][]">
+  3D array of tile settings [plane][x][y]
+</ParamField>
+
+Gets the settings/flags of tiles.
+
+```java
+byte[][][] tileSettings = worldView.getTileSettings();
+// Settings contain collision and bridge flags
+```
+
+## Collision
+
+### getCollisionMaps
+
+<ParamField path="Returns" type="CollisionData[]" nullable>
+  Array of collision data per plane
+</ParamField>
+
+Gets tile collision data.
+
+```java
+CollisionData[] collisionMaps = worldView.getCollisionMaps();
+if (collisionMaps != null && collisionMaps[plane] != null) {
+    int[][] flags = collisionMaps[plane].getFlags();
+    int flag = flags[x][y];
+    
+    // Check collision flags
+    boolean blocked = (flag & CollisionDataFlag.BLOCK_MOVEMENT_FULL) != 0;
+    boolean isWall = (flag & CollisionDataFlag.BLOCK_MOVEMENT_NORTH_WEST) != 0;
+}
+```
+
+## Graphics Objects and Projectiles
+
+### getGraphicsObjects
+
+<ParamField path="Returns" type="Deque<GraphicsObject>">
+  All graphics objects
+</ParamField>
+
+Gets all graphics objects currently drawn (spotanims on the ground).
+
+```java
+for (GraphicsObject graphicsObject : worldView.getGraphicsObjects()) {
+    int id = graphicsObject.getId();
+    LocalPoint location = graphicsObject.getLocation();
+    // Graphics like AoE indicators, spell effects, etc.
+}
+```
+
+## Selected Tile
+
+### getSelectedSceneTile
+
+<ParamField path="Returns" type="Tile" nullable>
+  The selected tile
+</ParamField>
+
+Gets the currently selected tile (last right-clicked tile).
+
+```java
+Tile selectedTile = worldView.getSelectedSceneTile();
+if (selectedTile != null) {
+    WorldPoint location = selectedTile.getWorldLocation();
+    log.info("Selected tile: " + location);
+}
+```
+
+## Instances
+
+### isInstance
+
+<ParamField path="Returns" type="boolean">
+  True if this is an instanced area
+</ParamField>
+
+Checks if the scene is an instance.
+
+```java
+if (worldView.isInstance()) {
+    // Player is in an instanced area (e.g., raid, private area)
+    int[][][] instanceChunks = worldView.getInstanceTemplateChunks();
+}
+```
+
+### getInstanceTemplateChunks
+
+<ParamField path="Returns" type="int[][][]">
+  3D array of template chunks [plane][chunkX][chunkY]
+</ParamField>
+
+Gets template chunks for instanced areas.
+
+```java
+if (worldView.isInstance()) {
+    int[][][] chunks = worldView.getInstanceTemplateChunks();
+    // Each int contains: rotation, chunk coords, plane
+    // See Constants.CHUNK_SIZE and InstanceTemplates
+}
+```
+
+## Map Regions
+
+### getMapRegions
+
+<ParamField path="Returns" type="int[]">
+  Array of loaded map region IDs
+</ParamField>
+
+Gets the map region IDs currently loaded.
+
+```java
+int[] regions = worldView.getMapRegions();
+for (int regionId : regions) {
+    log.debug("Loaded region: " + regionId);
+}
+```
+
+### getXteaKeys
+
+<ParamField path="Returns" type="int[][]">
+  2D array of XTEA keys
+</ParamField>
+
+Gets the XTEA encryption keys for loaded regions.
+
+```java
+int[][] xteaKeys = worldView.getXteaKeys();
+// Keys for decrypting region files
+// xteaKeys[i] corresponds to getMapRegions()[i]
+```
+
+## Coordinate Containment
+
+### contains (WorldPoint)
+
+<ParamField path="point" type="WorldPoint" required>
+  The world point to check
+</ParamField>
+
+<ParamField path="Returns" type="boolean">
+  True if worldview contains the point
+</ParamField>
+
+Tests if this worldview contains the given world point.
+
+```java
+WorldPoint point = new WorldPoint(3200, 3200, 0);
+if (worldView.contains(point)) {
+    // Point is in this worldview
+}
+```
+
+### contains (LocalPoint)
+
+<ParamField path="point" type="LocalPoint" required>
+  The local point to check
+</ParamField>
+
+<ParamField path="Returns" type="boolean">
+  True if worldview contains the point
+</ParamField>
+
+Tests if this worldview contains the given local point.
+
+```java
+LocalPoint lp = new LocalPoint(6400, 6400);
+if (worldView.contains(lp)) {
+    // Point is visible in this worldview
+}
+```
+
+## Projections
+
+### getMainWorldProjection
+
+<ParamField path="Returns" type="Projection" nullable>
+  Projection to main world
+</ParamField>
+
+Returns a projection to translate from this world view to the main world.
+
+```java
+Projection projection = worldView.getMainWorldProjection();
+if (projection != null) {
+    // Use projection for coordinate transformations
+}
+```
+
+### getCanvasProjection
+
+<ParamField path="Returns" type="Projection" nullable>
+  Projection to canvas
+</ParamField>
+
+Returns a projection to translate from this world view to the canvas.
+
+```java
+Projection canvasProjection = worldView.getCanvasProjection();
+if (canvasProjection != null) {
+    float[] projected = canvasProjection.project(x, y, z);
+}
+```
+
+## Click Actions
+
+### getYellowClickAction
+
+<ParamField path="Returns" type="int">
+  Click action constant
+</ParamField>
+
+Gets how clicking on tiles should behave for this WorldView.
+
+```java
+int clickAction = worldView.getYellowClickAction();
+switch (clickAction) {
+    case Constants.CLICK_ACTION_NONE:
+        // Clicking does nothing
+        break;
+    case Constants.CLICK_ACTION_WALK:
+        // Clicking walks to tile
+        break;
+    case Constants.CLICK_ACTION_SET_HEADING:
+        // Clicking sets heading only
+        break;
+}
+```
+
+## World Interface
+
+### World Properties
+
+The `World` interface represents individual RuneScape worlds:
+
+```java
+World[] worlds = client.getWorldList();
+for (World world : worlds) {
+    int worldId = world.getId();        // World number
+    int players = world.getPlayerCount(); // Current players
+    String activity = world.getActivity(); // e.g., "Trade - Members"
+    String address = world.getAddress();  // Server address
+    int location = world.getLocation();   // Geographic location
+    EnumSet<WorldType> types = world.getTypes(); // World properties
+}
+```
+
+### World Types
+
+```java
+World world = getCurrentWorld();
+EnumSet<WorldType> types = world.getTypes();
+
+if (types.contains(WorldType.MEMBERS)) {
+    // Members world
+}
+if (types.contains(WorldType.PVP)) {
+    // PvP world
+}
+if (types.contains(WorldType.SKILL_TOTAL)) {
+    // Skill total world
+}
+if (types.contains(WorldType.LEAGUE)) {
+    // League world
+}
+```
+
+### Getting Current World
+
+```java
+// Get current world number
+int currentWorldId = client.getWorld();
+
+// Find World object
+World currentWorld = null;
+for (World world : client.getWorldList()) {
+    if (world.getId() == currentWorldId) {
+        currentWorld = world;
+        break;
+    }
+}
+
+if (currentWorld != null) {
+    EnumSet<WorldType> types = client.getWorldType();
+    // or: types = currentWorld.getTypes();
+}
+```
+
+### World Hopping
+
+```java
+// Open world hopper interface
+client.openWorldHopper();
+
+// Hop to specific world
+for (World world : client.getWorldList()) {
+    if (world.getId() == 301) {
+        client.hopToWorld(world);
+        break;
+    }
+}
+
+// Create a World object
+World world = client.createWorld();
+world.setId(301);
+world.setAddress("oldschool1.runescape.com");
+client.changeWorld(world);
+```
+
+## Example: Scene Walker
+
+```java
+public void walkScene() {
+    WorldView worldView = client.getTopLevelWorldView();
+    Scene scene = worldView.getScene();
+    Tile[][][] tiles = scene.getTiles();
+    
+    int plane = worldView.getPlane();
+    
+    // Walk all tiles on current plane
+    for (int x = 0; x < Constants.SCENE_SIZE; x++) {
+        for (int y = 0; y < Constants.SCENE_SIZE; y++) {
+            Tile tile = tiles[plane][x][y];
+            if (tile == null) continue;
+            
+            // Get world location
+            WorldPoint worldLoc = tile.getWorldLocation();
+            
+            // Check tile objects
+            GameObject[] gameObjects = tile.getGameObjects();
+            for (GameObject obj : gameObjects) {
+                if (obj != null) {
+                    int id = obj.getId();
+                    // Process object
+                }
+            }
+            
+            // Check ground object
+            GroundObject groundObj = tile.getGroundObject();
+            if (groundObj != null) {
+                // Process ground object
+            }
+            
+            // Check wall object
+            WallObject wall = tile.getWallObject();
+            if (wall != null) {
+                // Process wall
+            }
+            
+            // Check decorative object
+            DecorativeObject decor = tile.getDecorativeObject();
+            if (decor != null) {
+                // Process decoration
+            }
+        }
+    }
+}
+```
+
+## Example: Collision Detection
+
+```java
+public boolean canWalkTo(WorldPoint dest) {
+    WorldView worldView = client.getTopLevelWorldView();
+    CollisionData[] collisionMaps = worldView.getCollisionMaps();
+    
+    if (collisionMaps == null) {
+        return false;
+    }
+    
+    int plane = dest.getPlane();
+    if (plane < 0 || plane >= collisionMaps.length) {
+        return false;
+    }
+    
+    CollisionData collisionData = collisionMaps[plane];
+    if (collisionData == null) {
+        return false;
+    }
+    
+    // Convert to scene coordinates
+    int sceneX = dest.getX() - worldView.getBaseX();
+    int sceneY = dest.getY() - worldView.getBaseY();
+    
+    int[][] flags = collisionData.getFlags();
+    int flag = flags[sceneX][sceneY];
+    
+    // Check if tile is blocked
+    return (flag & CollisionDataFlag.BLOCK_MOVEMENT_FULL) == 0;
+}
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Scene and Tiles" icon="map" href="/api/scene">
+    Scene and Tile interfaces
+  </Card>
+  <Card title="Player" icon="user" href="/api/player">
+    Player interface
+  </Card>
+  <Card title="NPC" icon="dragon" href="/api/npc">
+    NPC interface
+  </Card>
+  <Card title="Client" icon="computer" href="/api/client">
+    Client interface
+  </Card>
+</CardGroup>

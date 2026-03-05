@@ -1,0 +1,299 @@
+---
+title: 'Color Utilities'
+description: 'Color manipulation and conversion utilities including JagexColor'
+---
+
+RuneLite provides utilities for working with colors, including conversions between different color formats used by RuneScape.
+
+## JagexColor
+
+The `JagexColor` class handles RuneScape's HSL color format.
+
+### RGB to HSL
+
+<ParamField path="r" type="int" required>
+  Red component (0-255)
+</ParamField>
+
+<ParamField path="g" type="int" required>
+  Green component (0-255)
+</ParamField>
+
+<ParamField path="b" type="int" required>
+  Blue component (0-255)
+</ParamField>
+
+<ParamField path="Returns" type="int">
+  HSL color value
+</ParamField>
+
+Converts RGB to RuneScape's HSL format.
+
+```java
+import net.runelite.api.JagexColor;
+
+int hsl = JagexColor.rgbToHSL(255, 0, 0); // Red in HSL
+```
+
+### HSL to RGB
+
+<ParamField path="hsl" type="int" required>
+  HSL color value
+</ParamField>
+
+<ParamField path="Returns" type="int">
+  RGB color (packed int)
+</ParamField>
+
+Converts RuneScape's HSL format to RGB.
+
+```java
+int rgb = JagexColor.hslToRGB(hsl);
+
+// Extract components
+int red = (rgb >> 16) & 0xFF;
+int green = (rgb >> 8) & 0xFF;
+int blue = rgb & 0xFF;
+
+Color color = new Color(red, green, blue);
+```
+
+## Color Manipulation
+
+### Brightness Adjustment
+
+```java
+import java.awt.Color;
+
+public Color adjustBrightness(Color color, float factor) {
+    float[] hsb = Color.RGBtoHSB(
+        color.getRed(),
+        color.getGreen(),
+        color.getBlue(),
+        null
+    );
+    
+    // Adjust brightness
+    hsb[2] = Math.min(1.0f, hsb[2] * factor);
+    
+    return Color.getHSBColor(hsb[0], hsb[1], hsb[2]);
+}
+
+// Usage
+Color original = Color.BLUE;
+Color brighter = adjustBrightness(original, 1.5f);
+Color darker = adjustBrightness(original, 0.5f);
+```
+
+### Alpha Transparency
+
+```java
+public Color withAlpha(Color color, int alpha) {
+    return new Color(
+        color.getRed(),
+        color.getGreen(),
+        color.getBlue(),
+        alpha
+    );
+}
+
+// Usage
+Color opaqueRed = Color.RED;
+Color transparentRed = withAlpha(opaqueRed, 128); // 50% transparent
+```
+
+### Color Blending
+
+```java
+public Color blend(Color c1, Color c2, float ratio) {
+    float invRatio = 1.0f - ratio;
+    
+    int red = (int)(c1.getRed() * invRatio + c2.getRed() * ratio);
+    int green = (int)(c1.getGreen() * invRatio + c2.getGreen() * ratio);
+    int blue = (int)(c1.getBlue() * invRatio + c2.getBlue() * ratio);
+    int alpha = (int)(c1.getAlpha() * invRatio + c2.getAlpha() * ratio);
+    
+    return new Color(red, green, blue, alpha);
+}
+
+// Usage
+Color start = Color.RED;
+Color end = Color.BLUE;
+Color middle = blend(start, end, 0.5f); // Purple
+```
+
+## Common Colors
+
+### RuneScape UI Colors
+
+```java
+public class RSColors {
+    // UI backgrounds
+    public static final Color UI_BACKGROUND = new Color(32, 31, 29);
+    public static final Color UI_BORDER = new Color(0, 0, 0);
+    
+    // Text colors
+    public static final Color TEXT_YELLOW = new Color(255, 255, 0);
+    public static final Color TEXT_ORANGE = new Color(255, 144, 64);
+    public static final Color TEXT_GREEN = new Color(0, 255, 0);
+    public static final Color TEXT_RED = new Color(255, 0, 0);
+    
+    // Item rarity colors
+    public static final Color COMMON = new Color(255, 255, 255);
+    public static final Color UNCOMMON = new Color(0, 255, 0);
+    public static final Color RARE = new Color(0, 128, 255);
+    public static final Color VERY_RARE = new Color(128, 0, 255);
+}
+```
+
+### Skill Colors
+
+```java
+public Color getSkillColor(Skill skill) {
+    switch (skill) {
+        case ATTACK:
+            return new Color(200, 0, 0);
+        case STRENGTH:
+            return new Color(0, 200, 0);
+        case DEFENCE:
+            return new Color(0, 128, 255);
+        case HITPOINTS:
+            return new Color(255, 0, 0);
+        case PRAYER:
+            return new Color(200, 200, 0);
+        case MAGIC:
+            return new Color(128, 0, 255);
+        default:
+            return Color.WHITE;
+    }
+}
+```
+
+## Color Gradients
+
+```java
+public Color[] createGradient(Color start, Color end, int steps) {
+    Color[] gradient = new Color[steps];
+    
+    for (int i = 0; i < steps; i++) {
+        float ratio = (float)i / (steps - 1);
+        gradient[i] = blend(start, end, ratio);
+    }
+    
+    return gradient;
+}
+
+// Usage
+Color[] healthGradient = createGradient(
+    Color.RED,   // Low health
+    Color.GREEN, // Full health
+    10
+);
+```
+
+## Heat Map Colors
+
+```java
+public Color getHeatMapColor(float value) {
+    // value: 0.0 to 1.0
+    value = Math.max(0, Math.min(1, value));
+    
+    if (value < 0.5f) {
+        // Blue to cyan to green
+        float t = value * 2;
+        return blend(Color.BLUE, Color.GREEN, t);
+    } else {
+        // Green to yellow to red
+        float t = (value - 0.5f) * 2;
+        return blend(Color.GREEN, Color.RED, t);
+    }
+}
+```
+
+## Example: Health Bar Colors
+
+```java
+public Color getHealthColor(int healthRatio, int healthScale) {
+    if (healthScale <= 0) {
+        return Color.WHITE;
+    }
+    
+    float healthPercent = (float)healthRatio / healthScale;
+    
+    if (healthPercent > 0.75f) {
+        return Color.GREEN;
+    } else if (healthPercent > 0.5f) {
+        return Color.YELLOW;
+    } else if (healthPercent > 0.25f) {
+        return Color.ORANGE;
+    } else {
+        return Color.RED;
+    }
+}
+
+// Usage with NPC
+NPC npc = ...;
+int ratio = npc.getHealthRatio();
+int scale = npc.getHealthScale();
+Color color = getHealthColor(ratio, scale);
+```
+
+## Example: Item Value Colors
+
+```java
+public Color getValueColor(int price) {
+    if (price >= 10000000) {
+        return new Color(255, 0, 255); // Magenta - Very expensive
+    } else if (price >= 1000000) {
+        return new Color(255, 0, 0); // Red - Expensive
+    } else if (price >= 100000) {
+        return new Color(255, 128, 0); // Orange - Moderate
+    } else if (price >= 10000) {
+        return new Color(255, 255, 0); // Yellow - Cheap
+    } else {
+        return new Color(255, 255, 255); // White - Very cheap
+    }
+}
+
+// Usage
+ItemComposition comp = client.getItemDefinition(itemId);
+int price = comp.getPrice();
+Color color = getValueColor(price);
+```
+
+## Color Palettes
+
+```java
+public class ColorPalettes {
+    // Material Design colors
+    public static final Color[] MATERIAL = {
+        new Color(244, 67, 54),   // Red
+        new Color(233, 30, 99),   // Pink
+        new Color(156, 39, 176),  // Purple
+        new Color(103, 58, 183),  // Deep Purple
+        new Color(63, 81, 181),   // Indigo
+        new Color(33, 150, 243),  // Blue
+        new Color(0, 188, 212),   // Cyan
+        new Color(0, 150, 136),   // Teal
+        new Color(76, 175, 80),   // Green
+        new Color(255, 235, 59),  // Yellow
+        new Color(255, 152, 0),   // Orange
+    };
+    
+    // Get color from palette by index
+    public static Color getColor(int index) {
+        return MATERIAL[index % MATERIAL.length];
+    }
+}
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Text Utils" icon="font" href="/api/text-utils">
+    Text formatting utilities
+  </Card>
+  <Card title="Client" icon="computer" href="/api/client">
+    Client interface
+  </Card>
+</CardGroup>

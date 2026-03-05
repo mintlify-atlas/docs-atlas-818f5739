@@ -1,0 +1,578 @@
+---
+title: Cache Library
+description: Read and manipulate OSRS game data using RuneLite's cache library
+---
+
+## Overview
+
+The RuneLite cache library provides comprehensive tools for reading and writing Old School RuneScape's game cache. The cache contains all game assets including items, objects, NPCs, maps, models, sprites, and scripts.
+
+## Cache Structure
+
+### Store and Index System
+
+The cache is organized into a hierarchical structure:
+
+```
+Store (main cache directory)
+  └─ Index (e.g., ITEMS, MODELS, SPRITES)
+       └─ Archive (groups of related data)
+            └─ Files (individual data entries)
+```
+
+### Opening a Cache
+
+```java
+import net.runelite.cache.fs.Store;
+import net.runelite.cache.fs.Index;
+import java.io.File;
+
+// From Store.java:42-46
+Store store = new Store(new File("/path/to/cache"));
+store.load();
+
+// Access a specific index
+Index itemsIndex = store.getIndex(IndexType.CONFIGS);
+```
+
+<Info>
+The `Store` class automatically initializes the `DiskStorage` backend for reading Jagex's cache format.
+</Info>
+
+## Index Types
+
+RuneLite defines standard index types in `IndexType.java`:
+
+```java
+// From IndexType.java:29-51
+public enum IndexType
+{
+    ANIMATIONS(0),
+    SKELETONS(1),
+    CONFIGS(2),        // Items, NPCs, Objects
+    INTERFACES(3),
+    SOUNDEFFECTS(4),
+    MAPS(5),
+    MUSIC_TRACKS(6),
+    MODELS(7),
+    SPRITES(8),
+    TEXTURES(9),
+    BINARY(10),
+    MUSIC_JINGLES(11),
+    CLIENTSCRIPT(12),  // CS2 scripts
+    FONTS(13),
+    MUSIC_SAMPLES(14),
+    MUSIC_PATCHES(15),
+    WORLDMAP_GEOGRAPHY(18),
+    WORLDMAP(19),
+    WORLDMAP_GROUND(20),
+    DBTABLEINDEX(21),
+    ANIMAYAS(22),
+    GAMEVALS(24);
+}
+```
+
+## Working with Archives
+
+### Retrieving Archive Data
+
+```java
+import net.runelite.cache.fs.Archive;
+import net.runelite.cache.fs.ArchiveFiles;
+
+// Get an archive from an index
+Archive archive = index.getArchive(archiveId);
+
+// Read the archive data from disk
+byte[] compressedData = storage.loadArchive(archive);
+
+// Decompress the archive
+byte[] decompressedData = archive.decompress(compressedData);
+
+// Get individual files from the archive
+ArchiveFiles files = archive.getFiles(compressedData);
+```
+
+### Archive Properties
+
+From `Archive.java:35-71`, archives contain metadata:
+
+```java
+public class Archive
+{
+    private final Index index;          // Parent index
+    private final int archiveId;        // Archive ID
+    private int nameHash;               // DJB2 hash of name
+    private int crc;                    // CRC32 checksum
+    private int compressedSize;         // Size when compressed
+    private int decompressedSize;       // Size when decompressed
+    private int revision;               // Version number
+    private int compression;            // Compression type
+    private FileData[] fileData;        // Files in archive
+}
+```
+
+### Compression Types
+
+The cache supports multiple compression methods:
+
+```java
+public class CompressionType
+{
+    public static final int NONE = 0;  // No compression
+    public static final int BZ2 = 1;   // BZip2 compression
+    public static final int GZ = 2;    // GZip compression
+}
+```
+
+## Container Format
+
+Archives are stored in containers with compression and integrity checking:
+
+```java
+// From Container.java:93-172
+public static Container decompress(byte[] b, int[] keys) throws IOException
+{
+    InputStream stream = new InputStream(b);
+    
+    int compression = stream.readUnsignedByte();
+    int compressedLength = stream.readInt();
+    
+    Crc32 crc32 = new Crc32();
+    crc32.update(b, 0, 5); // compression + length
+    
+    byte[] data;
+    switch (compression)
+    {
+        case CompressionType.NONE:
+        {
+            byte[] encryptedData = new byte[compressedLength];
+            stream.readBytes(encryptedData, 0, compressedLength);
+            
+            crc32.update(encryptedData, 0, compressedLength);
+            byte[] decryptedData = decrypt(encryptedData, encryptedData.length, keys);
+            
+            data = decryptedData;
+            break;
+        }
+        case CompressionType.BZ2:
+        {
+            byte[] encryptedData = new byte[compressedLength + 4];
+            stream.readBytes(encryptedData);
+            
+            crc32.update(encryptedData, 0, encryptedData.length);
+            byte[] decryptedData = decrypt(encryptedData, encryptedData.length, keys);
+            
+            InputStream decryptedStream = new InputStream(decryptedData);
+            int decompressedLength = decryptedStream.readInt();
+            data = BZip2.decompress(decryptedStream.getRemaining(), compressedLength);
+            break;
+        }
+        case CompressionType.GZ:
+        {
+            byte[] encryptedData = new byte[compressedLength + 4];
+            stream.readBytes(encryptedData);
+            
+            crc32.update(encryptedData, 0, encryptedData.length);
+            byte[] decryptedData = decrypt(encryptedData, encryptedData.length, keys);
+            
+            InputStream decryptedStream = new InputStream(decryptedData);
+            int decompressedLength = decryptedStream.readInt();
+            data = GZip.decompress(decryptedStream.getRemaining(), compressedLength);
+            break;
+        }
+    }
+    
+    int revision = -1;
+    if (stream.remaining() >= 2)
+    {
+        revision = stream.readUnsignedShort();
+    }
+    
+    Container container = new Container(compression, revision);
+    container.data = data;
+    container.crc = crc32.getHash();
+    return container;
+}
+```
+
+<Note>
+Some archives (particularly map regions) are encrypted with XTEA keys. Pass the keys array to decrypt them.
+</Note>
+
+## Loading Definitions
+
+### Item Definitions
+
+Load item definitions from the CONFIGS index:
+
+```java
+import net.runelite.cache.definitions.ItemDefinition;
+import net.runelite.cache.definitions.loaders.ItemLoader;
+
+// From ItemLoader.java:39-58
+ItemLoader loader = new ItemLoader();
+Index configIndex = store.getIndex(IndexType.CONFIGS);
+Archive itemArchive = configIndex.getArchive(10); // Items are in archive 10
+
+byte[] data = storage.loadArchive(itemArchive);
+ArchiveFiles files = itemArchive.getFiles(data);
+
+for (FSFile file : files.getFiles())
+{
+    ItemDefinition item = loader.load(file.getFileId(), file.getContents());
+    System.out.println("Item " + item.id + ": " + item.name);
+}
+```
+
+### Item Loader Implementation
+
+The `ItemLoader` parses binary item definitions using opcodes:
+
+```java
+// From ItemLoader.java:39-58
+public ItemDefinition load(int id, byte[] b)
+{
+    ItemDefinition def = new ItemDefinition(id);
+    InputStream is = new InputStream(b);
+    
+    while (true)
+    {
+        int opcode = is.readUnsignedByte();
+        if (opcode == 0)
+        {
+            break;
+        }
+        
+        this.decodeValues(opcode, def, is);
+    }
+    
+    post(def);
+    return def;
+}
+```
+
+<Accordion title="Common Item Opcodes">
+- **1**: Inventory model ID
+- **2**: Item name
+- **3**: Examine text
+- **11**: Stackable flag
+- **12**: Item cost/value
+- **16**: Members item flag
+- **30-34**: Ground menu options
+- **35-39**: Inventory menu options
+- **40**: Color replacements
+- **97/98**: Noted item IDs
+- **249**: Custom parameters (key-value pairs)
+</Accordion>
+
+### Object Definitions
+
+```java
+import net.runelite.cache.definitions.ObjectDefinition;
+import net.runelite.cache.definitions.loaders.ObjectLoader;
+
+// From ObjectLoader.java:50-71
+ObjectLoader loader = new ObjectLoader();
+loader.configureForRevision(archiveRevision); // Handle different cache versions
+
+Archive objectArchive = configIndex.getArchive(6); // Objects are in archive 6
+byte[] data = storage.loadArchive(objectArchive);
+ArchiveFiles files = objectArchive.getFiles(data);
+
+for (FSFile file : files.getFiles())
+{
+    ObjectDefinition object = loader.load(file.getFileId(), file.getContents());
+    System.out.println("Object " + object.getId() + ": " + object.getName());
+    System.out.println("Actions: " + Arrays.toString(object.getActions()));
+}
+```
+
+## Custom I/O Streams
+
+RuneLite provides specialized streams for reading cache data:
+
+### InputStream
+
+```java
+import net.runelite.cache.io.InputStream;
+
+InputStream stream = new InputStream(byteArray);
+
+// Read primitive types
+int unsignedByte = stream.readUnsignedByte();
+int signedByte = stream.readByte();
+int unsignedShort = stream.readUnsignedShort();
+short signedShort = stream.readShort();
+int int24 = stream.read24BitInt();
+int integer = stream.readInt();
+long longValue = stream.readLong();
+
+// Read strings (null-terminated)
+String text = stream.readString();
+
+// Read byte arrays
+byte[] bytes = new byte[100];
+stream.readBytes(bytes, 0, 100);
+
+// Check remaining bytes
+int remaining = stream.remaining();
+byte[] rest = stream.getRemaining();
+```
+
+### OutputStream
+
+```java
+import net.runelite.cache.io.OutputStream;
+
+OutputStream stream = new OutputStream();
+
+// Write primitive types
+stream.writeByte(value);
+stream.writeShort(value);
+stream.writeInt(value);
+stream.writeLong(value);
+
+// Write strings
+stream.writeString("Hello");
+
+// Write byte arrays
+stream.writeBytes(byteArray);
+
+// Get final byte array
+byte[] result = stream.flip();
+```
+
+## Finding Entities by Name
+
+### DJB2 Hashing
+
+The cache uses DJB2 hashing for name lookups:
+
+```java
+import net.runelite.cache.util.Djb2;
+
+// Find archive by name
+int hash = Djb2.hash("itemdefinitions");
+Archive archive = index.findArchiveByName("itemdefinitions");
+```
+
+From `Index.java:133-144`:
+
+```java
+public Archive findArchiveByName(String name)
+{
+    int hash = Djb2.hash(name);
+    for (Archive a : archives)
+    {
+        if (a.getNameHash() == hash)
+        {
+            return a;
+        }
+    }
+    return null;
+}
+```
+
+## Working with Regions and Maps
+
+Map data is stored in the MAPS index with region IDs:
+
+```java
+import net.runelite.cache.region.Region;
+import net.runelite.cache.region.RegionLoader;
+
+Index mapsIndex = store.getIndex(IndexType.MAPS);
+RegionLoader regionLoader = new RegionLoader();
+
+int regionId = 12850; // Lumbridge
+int x = (regionId >> 8) & 0xFF;
+int y = regionId & 0xFF;
+
+// Load region data
+Region region = regionLoader.loadRegion(store, regionId);
+
+// Access locations (objects) in the region
+for (Location location : region.getLocations())
+{
+    System.out.println("Object ID: " + location.getId());
+    System.out.println("Position: " + location.getPosition());
+}
+```
+
+## Sprites and Models
+
+### Loading Sprites
+
+```java
+import net.runelite.cache.definitions.SpriteDefinition;
+import net.runelite.cache.definitions.loaders.SpriteLoader;
+
+Index spritesIndex = store.getIndex(IndexType.SPRITES);
+SpriteLoader spriteLoader = new SpriteLoader();
+
+// Load sprite archive
+Archive spriteArchive = spritesIndex.getArchive(archiveId);
+byte[] data = storage.loadArchive(spriteArchive);
+
+SpriteDefinition[] sprites = spriteLoader.load(archiveId, data);
+
+for (SpriteDefinition sprite : sprites)
+{
+    int width = sprite.getWidth();
+    int height = sprite.getHeight();
+    int[] pixels = sprite.getPixels();
+    
+    // Convert to BufferedImage if needed
+    BufferedImage image = sprite.toBufferedImage();
+}
+```
+
+### Loading Models
+
+```java
+import net.runelite.cache.definitions.ModelDefinition;
+import net.runelite.cache.definitions.loaders.ModelLoader;
+
+Index modelsIndex = store.getIndex(IndexType.MODELS);
+ModelLoader modelLoader = new ModelLoader();
+
+Archive modelArchive = modelsIndex.getArchive(modelId);
+byte[] data = storage.loadArchive(modelArchive);
+
+ModelDefinition model = modelLoader.load(modelId, data);
+
+int[] verticesX = model.getVerticesX();
+int[] verticesY = model.getVerticesY();
+int[] verticesZ = model.getVerticesZ();
+
+int faceCount = model.getFaceCount();
+int[] trianglesX = model.getFaceVertexIndices1();
+int[] trianglesY = model.getFaceVertexIndices2();
+int[] trianglesZ = model.getFaceVertexIndices3();
+```
+
+## ClientScript (CS2)
+
+### Loading Scripts
+
+```java
+import net.runelite.cache.definitions.ScriptDefinition;
+import net.runelite.cache.definitions.loaders.ScriptLoader;
+
+Index scriptsIndex = store.getIndex(IndexType.CLIENTSCRIPT);
+ScriptLoader scriptLoader = new ScriptLoader();
+
+Archive scriptArchive = scriptsIndex.getArchive(scriptId);
+byte[] data = storage.loadArchive(scriptArchive);
+
+ScriptDefinition script = scriptLoader.load(scriptId, data);
+
+int[] instructions = script.getInstructions();
+int[] intOperands = script.getIntOperands();
+String[] stringOperands = script.getStringOperands();
+```
+
+## Cache Utilities
+
+### CRC32 Checksums
+
+```java
+import net.runelite.cache.util.Crc32;
+
+Crc32 crc = new Crc32();
+crc.update(data, 0, data.length);
+int checksum = crc.getHash();
+```
+
+### XTEA Encryption
+
+```java
+import net.runelite.cache.util.Xtea;
+
+int[] keys = {1234, 5678, 9012, 3456};
+Xtea xtea = new Xtea(keys);
+
+// Decrypt data
+byte[] decrypted = xtea.decrypt(encryptedData, encryptedData.length);
+
+// Encrypt data
+byte[] encrypted = xtea.encrypt(plainData, plainData.length);
+```
+
+## Building a Cache Reader
+
+Complete example of reading all items from the cache:
+
+```java
+import net.runelite.cache.IndexType;
+import net.runelite.cache.definitions.ItemDefinition;
+import net.runelite.cache.definitions.loaders.ItemLoader;
+import net.runelite.cache.fs.*;
+
+import java.io.File;
+import java.util.HashMap;
+import java.util.Map;
+
+public class CacheReader
+{
+    public static void main(String[] args) throws Exception
+    {
+        // Open the cache
+        Store store = new Store(new File("/path/to/cache"));
+        store.load();
+        
+        // Get CONFIGS index
+        Index configIndex = store.getIndex(IndexType.CONFIGS);
+        
+        // Items are in archive 10
+        Archive itemArchive = configIndex.getArchive(10);
+        
+        // Load and decompress the archive
+        Storage storage = store.getStorage();
+        byte[] archiveData = storage.loadArchive(itemArchive);
+        ArchiveFiles files = itemArchive.getFiles(archiveData);
+        
+        // Parse all item definitions
+        ItemLoader loader = new ItemLoader();
+        Map<Integer, ItemDefinition> items = new HashMap<>();
+        
+        for (FSFile file : files.getFiles())
+        {
+            ItemDefinition item = loader.load(file.getFileId(), file.getContents());
+            items.put(item.id, item);
+        }
+        
+        System.out.println("Loaded " + items.size() + " items");
+        
+        // Example: Print twisted bow stats
+        ItemDefinition tbow = items.get(20997);
+        System.out.println("Name: " + tbow.name);
+        System.out.println("Examine: " + tbow.examine);
+        System.out.println("Members: " + tbow.members);
+        
+        store.close();
+    }
+}
+```
+
+<Warning>
+Cache reading is I/O intensive. Consider caching parsed definitions in memory or a database for production use.
+</Warning>
+
+## Best Practices
+
+<Card title="Cache Library Usage">
+- Always close the `Store` when finished to release file handles
+- Cache parsed definitions to avoid repeated I/O
+- Use try-with-resources for automatic resource management
+- Handle missing archives gracefully (not all IDs exist)
+- Verify CRC checksums when writing cache data
+- Keep XTEA keys secure when working with map data
+</Card>
+
+## Related Topics
+
+- [Deobfuscation](/advanced/deobfuscation)
+- [Performance Optimization](/advanced/performance)
+- [Plugin Development](/guides/plugin-development)

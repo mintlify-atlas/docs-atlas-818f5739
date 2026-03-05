@@ -1,0 +1,365 @@
+---
+title: "Creating Plugins"
+description: "Step-by-step guide to creating your first RuneLite plugin"
+---
+
+## Overview
+
+RuneLite plugins extend the client's functionality by implementing the `Plugin` base class and using the `@PluginDescriptor` annotation. Plugins can subscribe to game events, render overlays, manage configuration, and interact with the game through the Client API.
+
+## Plugin Structure
+
+Every RuneLite plugin consists of at least two components:
+
+1. **Plugin Class** - Extends `Plugin` and contains your plugin logic
+2. **Plugin Descriptor** - Annotation that defines plugin metadata
+
+### Minimal Plugin Example
+
+```java MyPlugin.java
+package net.runelite.client.plugins.myplugin;
+
+import net.runelite.client.plugins.Plugin;
+import net.runelite.client.plugins.PluginDescriptor;
+
+@PluginDescriptor(
+    name = "My Plugin",
+    description = "My first RuneLite plugin",
+    tags = {"example", "tutorial"}
+)
+public class MyPlugin extends Plugin
+{
+    @Override
+    protected void startUp() throws Exception
+    {
+        log.info("My Plugin started!");
+    }
+
+    @Override
+    protected void shutDown() throws Exception
+    {
+        log.info("My Plugin stopped!");
+    }
+}
+```
+
+<Note>
+The `log` field is inherited from the `Plugin` base class and uses SLF4J for logging.
+</Note>
+
+## Step-by-Step Guide
+
+<Steps>
+  <Step title="Create Plugin Package">
+    Create a new package under `runelite-client/src/main/java/net/runelite/client/plugins/`:
+    
+    ```bash
+    mkdir -p runelite-client/src/main/java/net/runelite/client/plugins/myplugin
+    ```
+    
+    All plugin code should live within this package.
+  </Step>
+
+  <Step title="Create Plugin Class">
+    Create your main plugin class extending `Plugin`:
+    
+    ```java MyPlugin.java
+    package net.runelite.client.plugins.myplugin;
+    
+    import com.google.inject.Provides;
+    import javax.inject.Inject;
+    import net.runelite.api.Client;
+    import net.runelite.client.config.ConfigManager;
+    import net.runelite.client.plugins.Plugin;
+    import net.runelite.client.plugins.PluginDescriptor;
+    
+    @PluginDescriptor(
+        name = "My Plugin",
+        description = "Demonstrates basic plugin functionality",
+        tags = {"example", "utility"}
+    )
+    public class MyPlugin extends Plugin
+    {
+        @Inject
+        private Client client;
+        
+        @Inject
+        private MyPluginConfig config;
+        
+        @Override
+        protected void startUp() throws Exception
+        {
+            log.info("Plugin started");
+        }
+        
+        @Override
+        protected void shutDown() throws Exception
+        {
+            log.info("Plugin stopped");
+        }
+        
+        @Provides
+        MyPluginConfig provideConfig(ConfigManager configManager)
+        {
+            return configManager.getConfig(MyPluginConfig.class);
+        }
+    }
+    ```
+  </Step>
+
+  <Step title="Add Plugin Descriptor">
+    The `@PluginDescriptor` annotation is required and must specify:
+    
+    - `name` - Display name in plugin panel
+    - `description` - Short description of what the plugin does
+    - `tags` (optional) - Search tags for finding the plugin
+    
+    Additional optional fields:
+    - `enabledByDefault` - Whether plugin starts enabled (default: false)
+    - `conflicts` - Other plugin names that conflict with this one
+    - `loadWhenOutdated` - Load even if client is outdated (default: false)
+    - `hidden` - Hide from plugin panel (default: false)
+    
+    ```java
+    @PluginDescriptor(
+        name = "Advanced Plugin",
+        description = "Demonstrates advanced features",
+        tags = {"utility", "overlay", "chat"},
+        enabledByDefault = false,
+        conflicts = "Conflicting Plugin"
+    )
+    ```
+  </Step>
+
+  <Step title="Inject Dependencies">
+    Use `@Inject` to get access to RuneLite services and the game client:
+    
+    ```java
+    @Inject
+    private Client client;
+    
+    @Inject
+    private ClientThread clientThread;
+    
+    @Inject
+    private ChatMessageManager chatMessageManager;
+    
+    @Inject
+    private OverlayManager overlayManager;
+    ```
+    
+    Common dependencies:
+    - `Client` - Access game state and data
+    - `ClientThread` - Run code on game thread
+    - `ChatMessageManager` - Send chat messages
+    - `OverlayManager` - Register overlays
+    - `ItemManager` - Get item information
+    - `ConfigManager` - Access configuration
+  </Step>
+
+  <Step title="Implement Lifecycle Methods">
+    Override `startUp()` and `shutDown()` to handle plugin initialization and cleanup:
+    
+    ```java
+    @Override
+    protected void startUp() throws Exception
+    {
+        // Initialize plugin
+        overlayManager.add(overlay);
+        keyManager.registerKeyListener(inputListener);
+    }
+    
+    @Override
+    protected void shutDown() throws Exception
+    {
+        // Clean up resources
+        overlayManager.remove(overlay);
+        keyManager.unregisterKeyListener(inputListener);
+    }
+    ```
+  </Step>
+
+  <Step title="Subscribe to Events">
+    Use `@Subscribe` to handle game events:
+    
+    ```java
+    @Subscribe
+    public void onGameTick(GameTick event)
+    {
+        // Runs every game tick (600ms)
+        Player player = client.getLocalPlayer();
+        if (player != null)
+        {
+            log.debug("Player location: {}", player.getWorldLocation());
+        }
+    }
+    
+    @Subscribe
+    public void onChatMessage(ChatMessage event)
+    {
+        if (event.getType() == ChatMessageType.GAMEMESSAGE)
+        {
+            String message = event.getMessage();
+            log.info("Game message: {}", message);
+        }
+    }
+    ```
+    
+    <Info>
+    Event methods are automatically registered when the plugin starts and unregistered when it stops.
+    </Info>
+  </Step>
+
+  <Step title="Add Configuration (Optional)">
+    Create a configuration interface for user settings:
+    
+    ```java MyPluginConfig.java
+    package net.runelite.client.plugins.myplugin;
+    
+    import net.runelite.client.config.Config;
+    import net.runelite.client.config.ConfigGroup;
+    import net.runelite.client.config.ConfigItem;
+    
+    @ConfigGroup("myplugin")
+    public interface MyPluginConfig extends Config
+    {
+        @ConfigItem(
+            keyName = "enabled",
+            name = "Enable notifications",
+            description = "Show notifications for events"
+        )
+        default boolean enableNotifications()
+        {
+            return true;
+        }
+    }
+    ```
+    
+    Inject and use the config:
+    
+    ```java
+    @Inject
+    private MyPluginConfig config;
+    
+    if (config.enableNotifications())
+    {
+        notifier.notify("Event occurred!");
+    }
+    ```
+  </Step>
+
+  <Step title="Test Your Plugin">
+    Run the RuneLite client:
+    
+    ```bash
+    ./gradlew runClient
+    ```
+    
+    Your plugin will appear in the plugin panel. Enable it to test functionality.
+  </Step>
+</Steps>
+
+## Complete Example: XP Drop Plugin
+
+```java XpDropPlugin.java
+package net.runelite.client.plugins.xpdrop;
+
+import com.google.inject.Provides;
+import javax.inject.Inject;
+import net.runelite.api.Client;
+import net.runelite.api.Skill;
+import net.runelite.api.events.StatChanged;
+import net.runelite.client.config.ConfigManager;
+import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.plugins.Plugin;
+import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.ui.overlay.OverlayManager;
+
+@PluginDescriptor(
+    name = "XP Drop Tracker",
+    description = "Tracks and displays XP drops",
+    tags = {"xp", "experience", "overlay"}
+)
+public class XpDropPlugin extends Plugin
+{
+    @Inject
+    private Client client;
+    
+    @Inject
+    private OverlayManager overlayManager;
+    
+    @Inject
+    private XpDropOverlay overlay;
+    
+    @Inject
+    private XpDropConfig config;
+    
+    private int lastXp = 0;
+    
+    @Override
+    protected void startUp() throws Exception
+    {
+        overlayManager.add(overlay);
+        lastXp = client.getOverallExperience();
+    }
+    
+    @Override
+    protected void shutDown() throws Exception
+    {
+        overlayManager.remove(overlay);
+    }
+    
+    @Subscribe
+    public void onStatChanged(StatChanged event)
+    {
+        Skill skill = event.getSkill();
+        int currentXp = client.getSkillExperience(skill);
+        int xpGained = event.getXp() - currentXp;
+        
+        if (xpGained > 0 && config.showXpDrops())
+        {
+            overlay.addXpDrop(skill, xpGained);
+        }
+    }
+    
+    @Provides
+    XpDropConfig provideConfig(ConfigManager configManager)
+    {
+        return configManager.getConfig(XpDropConfig.class);
+    }
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Dependency Injection" icon="syringe">
+    Inject services with `@Inject` instead of accessing them statically
+  </Card>
+  <Card title="Clean Up Resources" icon="broom">
+    Always remove overlays, unregister listeners in `shutDown()`
+  </Card>
+  <Card title="Handle Null Values" icon="shield-check">
+    Game objects can be null - always check before using
+  </Card>
+  <Card title="Use Client Thread" icon="clock">
+    Modify game state only on the client thread
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Plugin Lifecycle" icon="arrows-rotate" href="/plugins/plugin-lifecycle">
+    Learn about plugin startup and shutdown
+  </Card>
+  <Card title="Using the API" icon="code" href="/plugins/using-the-api">
+    Explore the Client API and game data access
+  </Card>
+  <Card title="Configuration" icon="gear" href="/plugins/config-management">
+    Add user-configurable settings
+  </Card>
+  <Card title="Overlays" icon="layer-group" href="/plugins/overlays">
+    Create custom UI overlays
+  </Card>
+</CardGroup>

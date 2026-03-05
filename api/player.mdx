@@ -1,0 +1,469 @@
+---
+title: 'Player Interface'
+description: 'Player entity interface for interacting with player characters'
+---
+
+The `Player` interface represents a player entity in the game. It extends the `Actor` interface and provides player-specific functionality.
+
+## Getting Players
+
+### Local Player
+
+The local player is the logged-in player:
+
+```java
+Player localPlayer = client.getLocalPlayer();
+if (localPlayer != null) {
+    String name = localPlayer.getName();
+    WorldPoint location = localPlayer.getWorldLocation();
+}
+```
+
+### Other Players
+
+Get all players in the current world view:
+
+```java
+WorldView worldView = client.getTopLevelWorldView();
+for (Player player : worldView.players()) {
+    if (player != null && player != client.getLocalPlayer()) {
+        // Process other players
+        String name = player.getName();
+        int combatLevel = player.getCombatLevel();
+    }
+}
+```
+
+## Player Identification
+
+### getId
+
+<ParamField path="Returns" type="int">
+  The player ID
+</ParamField>
+
+Gets the ID of the player.
+
+```java
+int playerId = player.getId();
+```
+
+### getName
+
+<ParamField path="Returns" type="String" nullable>
+  The player's name
+</ParamField>
+
+Gets the name of the player.
+
+```java
+String name = player.getName();
+if (name != null) {
+    log.info("Player name: " + name);
+}
+```
+
+### getCombatLevel
+
+<ParamField path="Returns" type="int">
+  The combat level
+</ParamField>
+
+Gets the combat level of the player.
+
+```java
+int combatLevel = player.getCombatLevel();
+```
+
+## Player Appearance
+
+### getPlayerComposition
+
+<ParamField path="Returns" type="PlayerComposition">
+  The player's composition
+</ParamField>
+
+Gets the composition (appearance) of this player.
+
+```java
+PlayerComposition composition = player.getPlayerComposition();
+if (composition != null) {
+    int[] equipmentIds = composition.getEquipmentIds();
+    int[] colors = composition.getColors();
+    boolean isFemale = composition.isFemale();
+}
+```
+
+<Expandable title="Player Composition Details">
+  The `PlayerComposition` contains:
+  - Equipment IDs for each equipment slot
+  - Colors for each body part
+  - Gender (male/female)
+  - Transformations (e.g., NPC morphs)
+  
+  ```java
+  PlayerComposition comp = player.getPlayerComposition();
+  
+  // Get equipment
+  int[] equipment = comp.getEquipmentIds();
+  // Index corresponds to equipment slot
+  // Values are item IDs + 512 for items, or KitID for base models
+  
+  // Check if player has weapon equipped
+  int weaponSlot = KitType.WEAPON.ordinal();
+  if (equipment[weaponSlot] > 512) {
+      int itemId = equipment[weaponSlot] - 512;
+      // Player has item equipped
+  }
+  ```
+</Expandable>
+
+## Team and Social
+
+### getTeam
+
+<ParamField path="Returns" type="int">
+  Team number, or 0 if not on any team
+</ParamField>
+
+Gets the current team cape team number the player is on.
+
+```java
+int team = player.getTeam();
+if (team > 0) {
+    // Player is on a team (e.g., Castle Wars)
+}
+```
+
+### isFriend
+
+<ParamField path="Returns" type="boolean">
+  True if the player is a friend
+</ParamField>
+
+Checks whether this player is a friend of the local player.
+
+```java
+if (player.isFriend()) {
+    // This player is on your friends list
+}
+```
+
+### isFriendsChatMember
+
+<ParamField path="Returns" type="boolean">
+  True if the player is in your friends chat
+</ParamField>
+
+Checks whether this player is a member of the same friends chat as the local player.
+
+```java
+if (player.isFriendsChatMember()) {
+    // This player is in your friends chat
+}
+```
+
+### isClanMember
+
+<ParamField path="Returns" type="boolean">
+  True if the player is in your clan
+</ParamField>
+
+Checks whether the player is a member of the same clan as the local player.
+
+```java
+if (player.isClanMember()) {
+    // This player is in your clan
+}
+```
+
+## Overhead Icons
+
+### getOverheadIcon
+
+<ParamField path="Returns" type="HeadIcon" nullable>
+  The overhead icon (prayer)
+</ParamField>
+
+Gets the displayed overhead prayer icon of the player.
+
+```java
+HeadIcon icon = player.getOverheadIcon();
+if (icon == HeadIcon.MELEE) {
+    // Player is protecting from melee
+}
+else if (icon == HeadIcon.MAGIC) {
+    // Player is protecting from magic  
+}
+else if (icon == HeadIcon.RANGED) {
+    // Player is protecting from ranged
+}
+```
+
+<Expandable title="HeadIcon Values">
+  Available prayer overhead icons:
+  - `HeadIcon.MELEE` - Protect from Melee
+  - `HeadIcon.RANGED` - Protect from Missiles  
+  - `HeadIcon.MAGIC` - Protect from Magic
+  - `HeadIcon.RETRIBUTION` - Retribution
+  - `HeadIcon.SMITE` - Smite
+  - `HeadIcon.REDEMPTION` - Redemption
+</Expandable>
+
+### getSkullIcon
+
+<ParamField path="Returns" type="int">
+  The skull icon ID, or -1 if unskulled
+</ParamField>
+
+Gets the displayed skull icon of the player.
+
+```java
+int skullIcon = player.getSkullIcon();
+if (skullIcon == SkullIcon.SKULL) {
+    // Player is skulled
+}
+else if (skullIcon == -1) {
+    // Player is not skulled
+}
+```
+
+### setSkullIcon
+
+<ParamField path="skullIcon" type="int" required>
+  The skull icon ID to set, or -1 to remove
+</ParamField>
+
+Sets the displayed skull icon of the player.
+
+```java
+player.setSkullIcon(SkullIcon.SKULL);
+// or remove skull
+player.setSkullIcon(-1);
+```
+
+## Actor Properties (Inherited)
+
+As `Player` extends `Actor`, all actor methods are available:
+
+### Location
+
+```java
+// World location (server-side position)
+WorldPoint worldLocation = player.getWorldLocation();
+int x = worldLocation.getX();
+int y = worldLocation.getY();
+int plane = worldLocation.getPlane();
+
+// Local location (client render position)
+LocalPoint localLocation = player.getLocalLocation();
+int localX = localLocation.getX();
+int localY = localLocation.getY();
+
+// World area (for multi-tile actors)
+WorldArea area = player.getWorldArea();
+```
+
+### Animation
+
+```java
+// Current animation
+int animationId = player.getAnimation();
+if (animationId == AnimationID.MINING_RUNE_PICKAXE) {
+    // Player is mining
+}
+
+// Pose animation (idle, walk, run)
+int poseAnimation = player.getPoseAnimation();
+
+// Set animation
+player.setAnimation(AnimationID.EMOTE_LAUGH);
+```
+
+### Interaction
+
+```java
+// Check if player is interacting
+if (player.isInteracting()) {
+    Actor target = player.getInteracting();
+    if (target instanceof NPC) {
+        // Player is interacting with an NPC
+        NPC npc = (NPC) target;
+    }
+    else if (target instanceof Player) {
+        // Player is interacting with another player
+        Player otherPlayer = (Player) target;
+    }
+}
+```
+
+### Health
+
+```java
+// Get health ratio (not exact HP)
+int healthRatio = player.getHealthRatio();
+int healthScale = player.getHealthScale();
+
+if (healthRatio > 0 && healthScale > 0) {
+    double healthPercent = (double) healthRatio / healthScale;
+    // Health is approximately healthPercent * 100%
+}
+```
+
+### Overhead Text
+
+```java
+// Get overhead text (chat bubble)
+String overheadText = player.getOverheadText();
+
+// Set overhead text
+player.setOverheadText("Custom text");
+player.setOverheadCycle(100); // Duration in client ticks
+```
+
+### Graphics/Spotanims
+
+```java
+// Check for spotanim (graphical effect)
+if (player.hasSpotAnim(GraphicID.SPLASH)) {
+    // Player has splash graphic
+}
+
+// Create spotanim
+player.createSpotAnim(
+    0,                    // id (key for table)
+    GraphicID.FREEZE,     // spotanim id
+    0,                    // height offset
+    0                     // delay
+);
+
+// Remove spotanim
+player.removeSpotAnim(0);
+```
+
+## Canvas Rendering
+
+### getCanvasTilePoly
+
+<ParamField path="Returns" type="Polygon" nullable>
+  Polygon representing the player's tile on screen
+</ParamField>
+
+Gets the canvas area of the tile the player is standing on.
+
+```java
+Polygon tilePoly = player.getCanvasTilePoly();
+if (tilePoly != null) {
+    graphics.draw(tilePoly);
+}
+```
+
+### getConvexHull
+
+<ParamField path="Returns" type="Shape" nullable>
+  The convex hull of the player's model
+</ParamField>
+
+Gets the convex hull of the player's model.
+
+```java
+Shape hull = player.getConvexHull();
+if (hull != null) {
+    graphics.setColor(Color.RED);
+    graphics.draw(hull);
+}
+```
+
+### getCanvasTextLocation
+
+<ParamField path="graphics" type="Graphics2D" required>
+  Graphics context for font metrics
+</ParamField>
+
+<ParamField path="text" type="String" required>
+  The text to draw
+</ParamField>
+
+<ParamField path="heightOffset" type="int" required>
+  Z-axis offset
+</ParamField>
+
+<ParamField path="Returns" type="Point" nullable>
+  The point to draw text at
+</ParamField>
+
+Gets the point at which text should be drawn above the player.
+
+```java
+String text = player.getName();
+Point textLoc = player.getCanvasTextLocation(graphics, text, 200);
+if (textLoc != null) {
+    graphics.drawString(text, textLoc.getX(), textLoc.getY());
+}
+```
+
+### getMinimapLocation
+
+<ParamField path="Returns" type="Point" nullable>
+  Minimap dot location
+</ParamField>
+
+Gets the location on the minimap where this player's dot should appear.
+
+```java
+Point minimapLoc = player.getMinimapLocation();
+if (minimapLoc != null) {
+    graphics.fillOval(
+        minimapLoc.getX() - 2,
+        minimapLoc.getY() - 2,
+        4, 4
+    );
+}
+```
+
+## Example: Player Highlighter
+
+```java
+@Subscribe
+public void onPlayerSpawned(PlayerSpawned event) {
+    Player player = event.getPlayer();
+    
+    // Check if friend
+    if (player.isFriend()) {
+        log.info("Friend spotted: " + player.getName());
+    }
+    
+    // Check combat level
+    int combatLevel = player.getCombatLevel();
+    Player localPlayer = client.getLocalPlayer();
+    if (localPlayer != null) {
+        int levelDiff = Math.abs(combatLevel - localPlayer.getCombatLevel());
+        if (levelDiff > 10) {
+            // Significant level difference
+        }
+    }
+}
+
+@Subscribe  
+public void onPlayerDespawned(PlayerDespawned event) {
+    Player player = event.getPlayer();
+    log.info("Player left: " + player.getName());
+}
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Actor" icon="user-large" href="/api/npc">
+    Actor base interface
+  </Card>
+  <Card title="NPC" icon="dragon" href="/api/npc">
+    NPC interface
+  </Card>
+  <Card title="WorldView" icon="globe" href="/api/world">
+    WorldView and scene
+  </Card>
+  <Card title="Events" icon="bolt" href="/api/event-types">
+    Player events
+  </Card>
+</CardGroup>

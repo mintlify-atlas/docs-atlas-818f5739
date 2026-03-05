@@ -1,0 +1,142 @@
+---
+title: "Introduction"
+description: "Build powerful plugins for Old School RuneScape with RuneLite's comprehensive API"
+---
+
+<div style={{
+  background: 'linear-gradient(135deg, rgba(209, 148, 102, 0.15) 0%, rgba(24, 35, 42, 0.3) 100%)',
+  borderRadius: '8px',
+  padding: '3rem 2rem',
+  marginBottom: '2rem',
+  border: '1px solid rgba(209, 148, 102, 0.2)'
+}}>
+  <h1 style={{
+    fontSize: '3rem',
+    fontWeight: '700',
+    marginBottom: '1rem',
+    color: '#e6e6e6'
+  }}>
+    RuneLite Framework
+  </h1>
+  <p style={{
+    fontSize: '1.25rem',
+    color: '#829096',
+    marginBottom: '0'
+  }}>
+    Open source Old School RuneScape client with a powerful plugin system for game enhancements
+  </p>
+</div>
+
+## What is RuneLite?
+
+RuneLite is a free, open-source client for Old School RuneScape that provides a powerful framework for building game enhancements through plugins. With over 130 built-in plugins and support for external plugins, RuneLite enables developers to create custom features that enhance the OSRS experience.
+
+<CardGroup cols={2}>
+  <Card title="Plugin System" icon="puzzle-piece" href="/concepts/plugin-system">
+    Build custom plugins with a simple lifecycle and dependency injection
+  </Card>
+  <Card title="Rich API" icon="code" href="/api/client">
+    Access comprehensive game data through a clean, well-documented API
+  </Card>
+  <Card title="Event-Driven" icon="bolt" href="/concepts/event-bus">
+    React to game events with a powerful EventBus architecture
+  </Card>
+  <Card title="UI Overlays" icon="layer-group" href="/concepts/ui-overlays">
+    Render custom overlays on top of the game interface
+  </Card>
+</CardGroup>
+
+## Key Features
+
+<AccordionGroup>
+  <Accordion title="Extensive Plugin Ecosystem" icon="puzzle-piece">
+    RuneLite comes with 130+ built-in plugins covering everything from skill calculators to PvM helpers. Each plugin is independently managed and can be toggled on or off based on user preferences.
+  </Accordion>
+  
+  <Accordion title="Comprehensive Game API" icon="code">
+    Access all aspects of the game through clean Java interfaces - Players, NPCs, Items, GameObjects, Widgets, and more. The API abstracts away the complexity of the deobfuscated game client.
+  </Accordion>
+  
+  <Accordion title="Event-Driven Architecture" icon="bolt">
+    Subscribe to game events like chat messages, item spawns, NPC spawns, and more through a simple EventBus pattern. No polling required.
+  </Accordion>
+  
+  <Accordion title="Overlay System" icon="layer-group">
+    Create custom UI overlays that render on top of the game. Perfect for displaying timers, highlighting objects, or showing additional information.
+  </Accordion>
+  
+  <Accordion title="Configuration Management" icon="gear">
+    Each plugin can define its own configuration with a type-safe API. User settings are automatically persisted and synchronized.
+  </Accordion>
+  
+  <Accordion title="Cache Library" icon="database">
+    Read game data files directly from the cache - Item definitions, NPC stats, map data, and more.
+  </Accordion>
+</AccordionGroup>
+
+## Quick Start
+
+<Steps>
+  <Step title="Install Java">
+    RuneLite requires Java 11 or higher. Download from [AdoptOpenJDK](https://adoptopenjdk.net/) or use your system package manager.
+  </Step>
+  
+  <Step title="Clone the Repository">
+    ```bash
+    git clone https://github.com/runelite/runelite.git
+    cd runelite
+    ```
+  </Step>
+  
+  <Step title="Open in IntelliJ IDEA">
+    Import the project as a Gradle project. IntelliJ will automatically download dependencies and configure the project.
+  </Step>
+  
+  <Step title="Run the Client">
+    Run the `RuneLite` class in `runelite-client` to start the client. You're ready to start developing!
+  </Step>
+</Steps>
+
+<Card title="Full Installation Guide" icon="book-open" href="/installation" horizontal>
+  See detailed setup instructions for all platforms
+</Card>
+
+## Project Structure
+
+RuneLite is organized into several key modules:
+
+<CardGroup cols={2}>
+  <Card title="runelite-api" icon="brackets-curly">
+    Core API interfaces for accessing the game client
+  </Card>
+  <Card title="runelite-client" icon="desktop">
+    Main client application with built-in plugins
+  </Card>
+  <Card title="cache" icon="database">
+    Library for reading and writing OSRS cache files
+  </Card>
+  <Card title="runelite-gradle-plugin" icon="hammer">
+    Gradle plugin for building external plugins
+  </Card>
+</CardGroup>
+
+## Community & Support
+
+<CardGroup cols={2}>
+  <Card title="GitHub" icon="github" href="https://github.com/runelite/runelite">
+    Contribute to RuneLite on GitHub
+  </Card>
+  <Card title="Discord" icon="discord" href="https://discord.gg/ArdAhnN">
+    Join the RuneLite Discord community
+  </Card>
+  <Card title="Wiki" icon="book" href="https://github.com/runelite/runelite/wiki">
+    Browse the community wiki
+  </Card>
+  <Card title="Report Issues" icon="bug" href="https://github.com/runelite/runelite/issues">
+    Report bugs and request features
+  </Card>
+</CardGroup>
+
+## License
+
+RuneLite is licensed under the BSD 2-Clause License. See the [LICENSE](https://github.com/runelite/runelite/blob/master/LICENSE) file for details.

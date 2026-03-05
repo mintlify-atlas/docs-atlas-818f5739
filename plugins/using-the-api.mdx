@@ -1,0 +1,482 @@
+---
+title: "Using the Client API"
+description: "How to interact with the game through the RuneLite API"
+---
+
+## Overview
+
+The RuneLite Client API provides access to all aspects of the Old School RuneScape game client. The main entry point is the `Client` interface, which you inject into your plugin.
+
+## Accessing the Client
+
+```java
+import javax.inject.Inject;
+import net.runelite.api.Client;
+
+@Inject
+private Client client;
+```
+
+<Info>
+The `Client` interface is injected automatically by the plugin system. Never instantiate it manually.
+</Info>
+
+## Common API Patterns
+
+### Getting the Local Player
+
+```java
+@Subscribe
+public void onGameTick(GameTick event)
+{
+    Player player = client.getLocalPlayer();
+    if (player == null)
+    {
+        return; // Not logged in
+    }
+    
+    String name = player.getName();
+    WorldPoint location = player.getWorldLocation();
+    int combatLevel = player.getCombatLevel();
+    
+    log.debug("Player: {} at {} (CB: {})", name, location, combatLevel);
+}
+```
+
+<Warning>
+`getLocalPlayer()` returns `null` when not logged in. Always check for null.
+</Warning>
+
+### Accessing Skills and Stats
+
+```java
+import net.runelite.api.Skill;
+
+int attackLevel = client.getRealSkillLevel(Skill.ATTACK);
+int boostedAttack = client.getBoostedSkillLevel(Skill.ATTACK);
+int attackXp = client.getSkillExperience(Skill.ATTACK);
+
+int totalLevel = client.getTotalLevel();
+int combatLevel = client.getLocalPlayer().getCombatLevel();
+```
+
+**Common Skill Methods:**
+- `getRealSkillLevel(Skill)` - Base skill level (ignoring boosts)
+- `getBoostedSkillLevel(Skill)` - Current skill level (with boosts)
+- `getSkillExperience(Skill)` - Total XP in skill
+- `getTotalLevel()` - Sum of all skill levels
+
+### Working with NPCs
+
+```java
+import net.runelite.api.NPC;
+import net.runelite.api.coords.WorldArea;
+
+@Subscribe
+public void onNpcSpawned(NpcSpawned event)
+{
+    NPC npc = event.getNpc();
+    
+    // Basic info
+    String name = npc.getName();
+    int id = npc.getId();
+    int combatLevel = npc.getCombatLevel();
+    
+    // Location
+    WorldPoint location = npc.getWorldLocation();
+    WorldArea area = npc.getWorldArea();
+    
+    // State
+    int health = npc.getHealthRatio(); // 0-30
+    int healthScale = npc.getHealthScale();
+    boolean isDying = npc.isDead();
+    
+    // Composition (definition)
+    NPCComposition composition = npc.getComposition();
+    if (composition != null)
+    {
+        String[] actions = composition.getActions();
+    }
+}
+```
+
+### Querying All NPCs
+
+```java
+import java.util.List;
+import java.util.stream.Collectors;
+
+List<NPC> npcs = client.getNpcs();
+
+// Find specific NPC by ID
+NPC vorkath = npcs.stream()
+    .filter(npc -> npc.getId() == NpcID.VORKATH)
+    .findFirst()
+    .orElse(null);
+
+// Find all NPCs in area
+WorldArea area = new WorldArea(3200, 3200, 10, 10, 0);
+List<NPC> npcsInArea = npcs.stream()
+    .filter(npc -> area.contains(npc.getWorldLocation()))
+    .collect(Collectors.toList());
+```
+
+### Accessing Inventory
+
+```java
+import net.runelite.api.Item;
+import net.runelite.api.ItemContainer;
+import net.runelite.api.InventoryID;
+
+ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
+if (inventory != null)
+{
+    Item[] items = inventory.getItems();
+    
+    for (Item item : items)
+    {
+        int id = item.getId();
+        int quantity = item.getQuantity();
+        
+        if (id != -1) // -1 = empty slot
+        {
+            ItemComposition composition = itemManager.getItemComposition(id);
+            String name = composition.getName();
+            
+            log.debug("Inventory: {} x{}", name, quantity);
+        }
+    }
+}
+```
+
+**Common Inventory IDs:**
+- `InventoryID.INVENTORY` - Main inventory
+- `InventoryID.EQUIPMENT` - Worn equipment
+- `InventoryID.BANK` - Bank inventory
+
+### Game Objects and Tiles
+
+```java
+import net.runelite.api.GameObject;
+import net.runelite.api.Tile;
+import net.runelite.api.Scene;
+
+Scene scene = client.getScene();
+Tile[][][] tiles = scene.getTiles();
+
+int plane = client.getPlane();
+WorldPoint playerLoc = client.getLocalPlayer().getWorldLocation();
+LocalPoint localLoc = LocalPoint.fromWorld(client, playerLoc);
+
+if (localLoc != null)
+{
+    Tile tile = scene.getTiles()[plane][localLoc.getSceneX()][localLoc.getSceneY()];
+    
+    if (tile != null)
+    {
+        // Get objects on tile
+        GameObject[] objects = tile.getGameObjects();
+        for (GameObject obj : objects)
+        {
+            if (obj != null)
+            {
+                int id = obj.getId();
+                ObjectComposition comp = client.getObjectDefinition(id);
+                String name = comp.getName();
+            }
+        }
+    }
+}
+```
+
+### Widget System
+
+```java
+import net.runelite.api.widgets.Widget;
+import net.runelite.api.widgets.WidgetInfo;
+
+// Get specific widget
+Widget chatbox = client.getWidget(WidgetInfo.CHATBOX_MESSAGE_LINES);
+if (chatbox != null && !chatbox.isHidden())
+{
+    Widget[] children = chatbox.getChildren();
+}
+
+// Check if interface is open
+boolean bankOpen = client.getWidget(WidgetInfo.BANK_CONTAINER) != null;
+```
+
+### Varbit and VarPlayer
+
+```java
+import net.runelite.api.Varbits;
+import net.runelite.api.VarPlayer;
+
+// Read varbits (game state variables)
+int questPoints = client.getVarpValue(VarPlayer.QUEST_POINTS);
+int runEnergy = client.getEnergy();
+
+// Read specific varbits
+int slayerPoints = client.getVarbitValue(Varbits.SLAYER_REWARD_POINTS);
+```
+
+## Client Thread
+
+Some API operations must run on the client thread:
+
+```java
+import net.runelite.client.callback.ClientThread;
+
+@Inject
+private ClientThread clientThread;
+
+// Invoke on client thread
+clientThread.invoke(() ->
+{
+    // This runs on the game thread
+    Player player = client.getLocalPlayer();
+    // ... perform operations
+});
+
+// Invoke later (next tick)
+clientThread.invokeLater(() ->
+{
+    // Runs on next game tick
+});
+```
+
+<Warning>
+Modifying game state should always be done on the client thread using `ClientThread.invoke()` or `invokeLater()`.
+</Warning>
+
+## ItemManager
+
+The `ItemManager` provides item information and Grand Exchange prices:
+
+```java
+import net.runelite.client.game.ItemManager;
+
+@Inject
+private ItemManager itemManager;
+
+// Get item composition
+ItemComposition comp = itemManager.getItemComposition(ItemID.ABYSSAL_WHIP);
+String name = comp.getName();
+boolean tradeable = comp.isTradeable();
+int storePrice = comp.getPrice();
+
+// Get GE price
+int gePrice = itemManager.getItemPrice(ItemID.ABYSSAL_WHIP);
+
+// Get item image
+AsyncBufferedImage image = itemManager.getImage(ItemID.ABYSSAL_WHIP);
+```
+
+## Chat Message Manager
+
+Send messages to the chat box:
+
+```java
+import net.runelite.client.chat.ChatMessageManager;
+import net.runelite.client.chat.ChatColorType;
+import net.runelite.client.chat.ChatMessageBuilder;
+
+@Inject
+private ChatMessageManager chatMessageManager;
+
+// Send colored message
+String message = new ChatMessageBuilder()
+    .append(ChatColorType.HIGHLIGHT)
+    .append("Important message!")
+    .build();
+
+chatMessageManager.queue(QueuedMessage.builder()
+    .type(ChatMessageType.CONSOLE)
+    .runeLiteFormattedMessage(message)
+    .build());
+```
+
+## Menu Entry Manager
+
+Modify right-click menus:
+
+```java
+import net.runelite.client.menus.MenuManager;
+
+@Inject
+private MenuManager menuManager;
+
+@Override
+protected void startUp()
+{
+    // Add menu option to NPCs
+    menuManager.addManagedCustomMenu(
+        new MenuEntry(
+            "Track",
+            "<col=ffff00>NPC</col>",
+            MenuAction.RUNELITE.getId(),
+            0,
+            0,
+            false
+        ),
+        (event) -> {
+            NPC npc = event.getMenuEntry().getNpc();
+            trackNpc(npc);
+        }
+    );
+}
+```
+
+## Common Patterns
+
+### Null Safety
+
+```java
+@Subscribe
+public void onGameTick(GameTick event)
+{
+    Player player = client.getLocalPlayer();
+    if (player == null)
+    {
+        return;
+    }
+    
+    NPCComposition comp = npc.getComposition();
+    if (comp == null)
+    {
+        return;
+    }
+    
+    // Safe to use player and comp here
+}
+```
+
+### Coordinate Conversion
+
+```java
+import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.coords.LocalPoint;
+import net.runelite.api.Perspective;
+
+WorldPoint worldPoint = new WorldPoint(3200, 3200, 0);
+LocalPoint localPoint = LocalPoint.fromWorld(client, worldPoint);
+
+if (localPoint != null)
+{
+    // Point is within scene
+    Polygon polygon = Perspective.getCanvasTilePoly(client, localPoint);
+    if (polygon != null)
+    {
+        // Point is visible on screen
+        graphics.draw(polygon);
+    }
+}
+```
+
+### Checking Game State
+
+```java
+import net.runelite.api.GameState;
+
+GameState state = client.getGameState();
+
+if (state == GameState.LOGGED_IN)
+{
+    // Safe to access player and world
+}
+else if (state == GameState.LOADING)
+{
+    // World is loading
+}
+else if (state == GameState.LOGIN_SCREEN)
+{
+    // Not logged in
+}
+```
+
+## API Reference
+
+<CardGroup cols={2}>
+  <Card title="Client Interface" icon="desktop" href="/api/client">
+    Complete Client API reference
+  </Card>
+  <Card title="Player API" icon="user" href="/api/player">
+    Player interface documentation
+  </Card>
+  <Card title="NPC API" icon="dragon" href="/api/npc">
+    NPC interface documentation
+  </Card>
+  <Card title="Items & Inventory" icon="treasure-chest" href="/api/items">
+    Item and inventory APIs
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always Check for Null" icon="shield-check">
+    Most API methods can return `null`. Always check:
+    
+    ```java
+    Player player = client.getLocalPlayer();
+    if (player == null) return;
+    
+    NPCComposition comp = npc.getComposition();
+    if (comp == null) return;
+    ```
+  </Accordion>
+  
+  <Accordion title="Use Events Over Polling" icon="bolt">
+    React to events instead of constantly querying:
+    
+    ```java
+    // GOOD: Event-driven
+    @Subscribe
+    public void onStatChanged(StatChanged event)
+    {
+        handleLevelUp(event.getSkill());
+    }
+    
+    // BAD: Polling every tick
+    @Subscribe
+    public void onGameTick(GameTick event)
+    {
+        if (client.getRealSkillLevel(Skill.ATTACK) > lastLevel)
+        {
+            // ...
+        }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Cache Expensive Lookups" icon="database">
+    Cache data that doesn't change:
+    
+    ```java
+    private final Map<Integer, ItemComposition> itemCache = new HashMap<>();
+    
+    public ItemComposition getItem(int id)
+    {
+        return itemCache.computeIfAbsent(id, 
+            key -> itemManager.getItemComposition(key));
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Event Handling" icon="bolt" href="/api/event-handling">
+    Learn to handle game events
+  </Card>
+  <Card title="Creating Overlays" icon="layer-group" href="/plugins/overlays">
+    Render custom UI elements
+  </Card>
+  <Card title="API Examples" icon="code" href="/plugins/examples">
+    Real-world plugin examples
+  </Card>
+  <Card title="Best Practices" icon="star" href="/plugins/best-practices">
+    Plugin development guidelines
+  </Card>
+</CardGroup>

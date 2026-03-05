@@ -1,0 +1,291 @@
+---
+title: 'Text Utilities'
+description: 'Text manipulation and formatting utilities'
+---
+
+RuneLite provides various utilities for text manipulation and formatting, particularly useful for handling RuneScape's text formatting.
+
+## Text Class
+
+The `Text` utility class provides methods for cleaning and manipulating game text.
+
+### removeTags
+
+<ParamField path="str" type="String" required>
+  The string to clean
+</ParamField>
+
+<ParamField path="Returns" type="String">
+  The string with tags removed
+</ParamField>
+
+Removes HTML-like tags from text.
+
+```java
+import net.runelite.client.util.Text;
+
+String raw = "<col=ff0000>Red Text</col>";
+String clean = Text.removeTags(raw);
+// Result: "Red Text"
+
+String chatMessage = "<img=13>Player: Hello!";
+String cleanMessage = Text.removeTags(chatMessage);
+// Result: "Player: Hello!"
+```
+
+### sanitize
+
+<ParamField path="str" type="String" required>
+  The string to sanitize
+</ParamField>
+
+<ParamField path="Returns" type="String">
+  The sanitized string
+</ParamField>
+
+Sanitizes text by removing tags and non-breaking spaces.
+
+```java
+String text = Text.sanitize(rawText);
+```
+
+### standardize
+
+<ParamField path="str" type="String" required>
+  The string to standardize
+</ParamField>
+
+<ParamField path="Returns" type="String">
+  The standardized string
+</ParamField>
+
+Converts text to lowercase and removes tags.
+
+```java
+String itemName = "<col=ff9040>Abyssal whip</col>";
+String standardized = Text.standardize(itemName);
+// Result: "abyssal whip"
+```
+
+### toJagexName
+
+<ParamField path="str" type="String" required>
+  The string to convert
+</ParamField>
+
+<ParamField path="Returns" type="String">
+  The Jagex name format
+</ParamField>
+
+Converts a name to Jagex format (removes spaces, lowercase).
+
+```java
+String displayName = "Player Name";
+String jagexName = Text.toJagexName(displayName);
+// Result: "playername"
+```
+
+## Color Tags
+
+RuneScape uses HTML-like tags for text coloring:
+
+### Common Color Tags
+
+```java
+// Red text
+String red = "<col=ff0000>Red text</col>";
+
+// Green text
+String green = "<col=00ff00>Green text</col>";
+
+// Yellow/orange (common for item names)
+String orange = "<col=ff9040>Item name</col>";
+
+// White text
+String white = "<col=ffffff>White text</col>";
+```
+
+### Creating Colored Text
+
+```java
+public String colorText(String text, Color color) {
+    int rgb = color.getRGB() & 0xFFFFFF; // Remove alpha
+    return String.format("<col=%06x>%s</col>", rgb, text);
+}
+
+// Usage
+String redText = colorText("Warning", Color.RED);
+String customColor = colorText("Custom", new Color(255, 128, 0));
+```
+
+## String Formatting
+
+### Number Formatting
+
+```java
+import net.runelite.client.util.QuantityFormatter;
+
+// Format large numbers
+String formatted = QuantityFormatter.quantityToStackSize(1500000);
+// Result: "1.5M"
+
+long quantity = 50000;
+formatted = QuantityFormatter.quantityToStackSize(quantity);
+// Result: "50K"
+
+long billion = 1000000000;
+formatted = QuantityFormatter.quantityToStackSize(billion);
+// Result: "1B"
+```
+
+### Precise Number Formatting
+
+```java
+// Format with precision
+String formatted = QuantityFormatter.formatNumber(1234567);
+// Result: "1,234,567"
+```
+
+## Chat Message Building
+
+```java
+public void sendFormattedMessage(String message, Color color) {
+    String formatted = colorText(message, color);
+    
+    client.addChatMessage(
+        ChatMessageType.GAMEMESSAGE,
+        "",
+        formatted,
+        null
+    );
+}
+
+// Usage
+sendFormattedMessage("Quest complete!", Color.GREEN);
+sendFormattedMessage("Warning: Low health", Color.RED);
+```
+
+## Example: Item Name Formatter
+
+```java
+public String formatItemName(int itemId, int quantity) {
+    ItemComposition comp = client.getItemDefinition(itemId);
+    String name = comp.getName();
+    
+    // Color based on value
+    int value = comp.getPrice();
+    Color color;
+    
+    if (value > 1000000) {
+        color = Color.RED; // Expensive
+    } else if (value > 100000) {
+        color = Color.ORANGE; // Moderate
+    } else {
+        color = Color.YELLOW; // Cheap
+    }
+    
+    String coloredName = colorText(name, color);
+    
+    if (quantity > 1) {
+        return coloredName + " x" + QuantityFormatter.quantityToStackSize(quantity);
+    }
+    
+    return coloredName;
+}
+```
+
+## Example: Chat Filter
+
+```java
+@Subscribe
+public void onChatMessage(ChatMessage event) {
+    String message = event.getMessage();
+    String cleanMessage = Text.removeTags(message);
+    String lowerMessage = cleanMessage.toLowerCase();
+    
+    // Filter spam
+    if (lowerMessage.contains("selling") || 
+        lowerMessage.contains("buying")) {
+        // Mark as spam
+    }
+    
+    // Detect mentions
+    String playerName = client.getLocalPlayer().getName();
+    if (playerName != null) {
+        String jagexName = Text.toJagexName(playerName);
+        String cleanSender = Text.toJagexName(cleanMessage);
+        
+        if (cleanSender.contains(jagexName)) {
+            // Player was mentioned
+            highlightMessage(event);
+        }
+    }
+}
+```
+
+## Icon Tags
+
+RuneScape also uses icon tags:
+
+```java
+// Skill icons
+String attackIcon = "<img=0>"; // Attack icon
+String strengthIcon = "<img=2>"; // Strength icon
+
+// Prayer icons
+String prayerIcon = "<img=5>";
+
+// Other icons  
+String coinIcon = "<img=13>";
+
+// Usage in messages
+String message = "<img=13> Received 1000 coins";
+```
+
+## Text Wrapping
+
+```java
+import java.awt.FontMetrics;
+
+public List<String> wrapText(String text, FontMetrics metrics, int maxWidth) {
+    List<String> lines = new ArrayList<>();
+    String[] words = text.split(" ");
+    StringBuilder currentLine = new StringBuilder();
+    
+    for (String word : words) {
+        String testLine = currentLine.length() == 0 ? 
+            word : currentLine + " " + word;
+        
+        if (metrics.stringWidth(testLine) <= maxWidth) {
+            if (currentLine.length() > 0) {
+                currentLine.append(" ");
+            }
+            currentLine.append(word);
+        } else {
+            if (currentLine.length() > 0) {
+                lines.add(currentLine.toString());
+                currentLine = new StringBuilder(word);
+            } else {
+                lines.add(word);
+            }
+        }
+    }
+    
+    if (currentLine.length() > 0) {
+        lines.add(currentLine.toString());
+    }
+    
+    return lines;
+}
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Color Utils" icon="palette" href="/api/color-utils">
+    Color manipulation utilities
+  </Card>
+  <Card title="Client" icon="computer" href="/api/client">
+    Client interface
+  </Card>
+</CardGroup>

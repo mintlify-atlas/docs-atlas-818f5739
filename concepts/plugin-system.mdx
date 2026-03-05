@@ -1,0 +1,470 @@
+---
+title: 'Plugin System'
+description: 'How RuneLite plugins work and how to create your own plugins'
+---
+
+## Overview
+
+RuneLite's plugin system is the foundation of its extensibility. Plugins can hook into game events, render overlays, add menu entries, and much more. The plugin manager handles loading, dependency resolution, and lifecycle management.
+
+## Plugin Architecture
+
+### Plugin Base Class
+
+All plugins extend the abstract `Plugin` class:
+
+```java Plugin.java:31-73
+public abstract class Plugin implements Module
+{
+    protected Injector injector;
+    
+    @Override
+    public void configure(Binder binder)
+    {
+    }
+    
+    protected void startUp() throws Exception
+    {
+    }
+    
+    protected void shutDown() throws Exception
+    {
+    }
+    
+    public void resetConfiguration()
+    {
+    }
+    
+    public final Injector getInjector()
+    {
+        return injector;
+    }
+    
+    public String getName()
+    {
+        return getClass().getAnnotation(PluginDescriptor.class).name();
+    }
+}
+```
+
+<Note>
+  Plugins implement Google Guice's `Module` interface, allowing them to configure their own dependency injection bindings.
+</Note>
+
+## Plugin Descriptor
+
+Every plugin must be annotated with `@PluginDescriptor`:
+
+```java
+@PluginDescriptor(
+    name = "Example Plugin",
+    description = "An example plugin showing basic functionality",
+    tags = {"example", "tutorial"},
+    enabledByDefault = true
+)
+public class ExamplePlugin extends Plugin
+{
+    // Plugin implementation
+}
+```
+
+### Descriptor Properties
+
+| Property | Description | Required |
+|----------|-------------|----------|
+| `name` | Display name of the plugin | Yes |
+| `description` | Short one-line summary | No |
+| `tags` | Search keywords (lowercase, no spaces) | No |
+| `configName` | Internal name used in config (defaults to class name) | No |
+| `conflicts` | List of plugin names that conflict | No |
+| `enabledByDefault` | Whether plugin starts enabled | No (default: true) |
+| `hidden` | Hide from configuration panel | No (default: false) |
+| `developerPlugin` | Only loads in developer mode | No (default: false) |
+| `loadInSafeMode` | Loads when safe mode is enabled | No (default: true) |
+
+## Plugin Lifecycle
+
+<Steps>
+  <Step title="Discovery">
+    PluginManager scans the classpath for classes annotated with `@PluginDescriptor`
+    
+    ```java PluginManager.java:260-271
+    public void loadCorePlugins() throws IOException, PluginInstantiationException
+    {
+        ClassPath classPath = ClassPath.from(getClass().getClassLoader());
+        
+        List<Class<?>> plugins = classPath
+            .getTopLevelClassesRecursive(PLUGIN_PACKAGE)
+            .stream()
+            .map(ClassInfo::load)
+            .collect(Collectors.toList());
+        
+        loadPlugins(plugins, (loaded, total) ->
+            SplashScreen.stage(.60, .70, null, "Loading plugins", loaded, total, false));
+    }
+    ```
+  </Step>
+  
+  <Step title="Dependency Resolution">
+    Plugins can depend on other plugins using `@PluginDependency`. The manager builds a dependency graph and performs topological sorting.
+    
+    ```java
+    @PluginDependency(OtherPlugin.class)
+    public class MyPlugin extends Plugin
+    {
+        @Inject
+        private OtherPlugin otherPlugin;
+    }
+    ```
+  </Step>
+  
+  <Step title="Instantiation">
+    Each plugin gets its own Guice injector as a child of the parent injector
+    
+    ```java PluginManager.java:536-608
+    private Plugin instantiate(List<Plugin> scannedPlugins, Class<Plugin> clazz)
+    {
+        Plugin plugin = clazz.getDeclaredConstructor().newInstance();
+        
+        Injector parent = RuneLite.getInjector();
+        
+        // Create injector for the module
+        Module pluginModule = (Binder binder) -> {
+            binder.bind(clazz).toInstance(plugin);
+            binder.install(plugin);
+        };
+        Injector pluginInjector = parent.createChildInjector(pluginModule);
+        plugin.injector = pluginInjector;
+        
+        return plugin;
+    }
+    ```
+  </Step>
+  
+  <Step title="Starting">
+    When enabled, `startUp()` is called on the Event Dispatch Thread
+    
+    ```java PluginManager.java:402-464
+    public boolean startPlugin(Plugin plugin) throws PluginInstantiationException
+    {
+        // plugins always start in the EDT
+        assert SwingUtilities.isEventDispatchThread();
+        
+        if (activePlugins.contains(plugin) || !isPluginEnabled(plugin)) {
+            return false;
+        }
+        
+        activePlugins.add(plugin);
+        
+        plugin.startUp();
+        eventBus.register(plugin);
+        schedule(plugin);
+        eventBus.post(new PluginChanged(plugin, true));
+        
+        return true;
+    }
+    ```
+  </Step>
+  
+  <Step title="Running">
+    Plugin receives events through `@Subscribe` methods and scheduled tasks
+  </Step>
+  
+  <Step title="Stopping">
+    When disabled, `shutDown()` is called on the EDT
+    
+    ```java PluginManager.java:466-492
+    public boolean stopPlugin(Plugin plugin)
+    {
+        if (!activePlugins.remove(plugin)) {
+            return false;
+        }
+        
+        unschedule(plugin);
+        eventBus.unregister(plugin);
+        
+        plugin.shutDown();
+        eventBus.post(new PluginChanged(plugin, false));
+        
+        return true;
+    }
+    ```
+  </Step>
+</Steps>
+
+<Warning>
+  Plugins start and stop on the Event Dispatch Thread (EDT). Never perform long-running operations in `startUp()` or `shutDown()` as this will freeze the UI.
+</Warning>
+
+## Basic Plugin Example
+
+```java
+import net.runelite.client.plugins.Plugin;
+import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.eventbus.Subscribe;
+import net.runelite.api.events.GameTick;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+@PluginDescriptor(
+    name = "Hello World",
+    description = "A simple example plugin",
+    tags = {"example"}
+)
+public class HelloWorldPlugin extends Plugin
+{
+    @Inject
+    private Client client;
+    
+    @Override
+    protected void startUp() throws Exception
+    {
+        log.info("Hello World plugin started!");
+    }
+    
+    @Override
+    protected void shutDown() throws Exception
+    {
+        log.info("Hello World plugin stopped!");
+    }
+    
+    @Subscribe
+    public void onGameTick(GameTick event)
+    {
+        if (client.getLocalPlayer() != null)
+        {
+            log.debug("Player location: {}", client.getLocalPlayer().getWorldLocation());
+        }
+    }
+}
+```
+
+## Dependency Injection
+
+Plugins can inject any service or component:
+
+```java
+@Inject
+private Client client;
+
+@Inject
+private ConfigManager configManager;
+
+@Inject
+private OverlayManager overlayManager;
+
+@Inject
+private ChatMessageManager chatMessageManager;
+
+@Inject
+private ScheduledExecutorService executor;
+```
+
+<Info>
+  Injection happens automatically after the plugin is instantiated. All `@Inject` fields are guaranteed to be set before `startUp()` is called.
+</Info>
+
+## Plugin Configuration
+
+Plugins can provide custom configuration using the `configure()` method:
+
+```java
+@Override
+public void configure(Binder binder)
+{
+    binder.bind(MyConfig.class).toInstance(
+        configManager.getConfig(MyConfig.class)
+    );
+}
+```
+
+See the [Configuration](/concepts/configuration) page for more details.
+
+## Plugin Dependencies
+
+Plugins can depend on other plugins:
+
+```java
+@PluginDependency(XpTrackerPlugin.class)
+@PluginDescriptor(
+    name = "Advanced XP Tracker",
+    description = "Extends the XP tracker"
+)
+public class AdvancedXpTrackerPlugin extends Plugin
+{
+    @Inject
+    private XpTrackerPlugin xpTracker;
+    
+    // Access xpTracker methods
+}
+```
+
+<Note>
+  The PluginManager ensures dependencies are loaded and started before dependent plugins.
+</Note>
+
+## Plugin Conflicts
+
+Plugins can declare conflicts with other plugins:
+
+```java
+@PluginDescriptor(
+    name = "Alternative UI",
+    description = "Alternative user interface",
+    conflicts = {"Standard UI"}
+)
+public class AlternativeUIPlugin extends Plugin
+{
+    // This will automatically disable "Standard UI" plugin when enabled
+}
+```
+
+## Scheduled Tasks
+
+Plugins can schedule recurring tasks using the `@Schedule` annotation:
+
+```java
+import net.runelite.client.task.Schedule;
+import java.time.temporal.ChronoUnit;
+
+@Schedule(
+    period = 1,
+    unit = ChronoUnit.SECONDS,
+    asynchronous = true
+)
+public void checkForUpdates()
+{
+    // This runs every second on a background thread
+}
+```
+
+## Event Subscription
+
+Plugins receive game events through `@Subscribe` methods:
+
+```java
+@Subscribe
+public void onGameTick(GameTick event)
+{
+    // Called every game tick (~600ms)
+}
+
+@Subscribe
+public void onChatMessage(ChatMessage event)
+{
+    // Called when a chat message is received
+}
+
+@Subscribe(priority = 10)
+public void onMenuOptionClicked(MenuOptionClicked event)
+{
+    // Higher priority runs first
+}
+```
+
+See the [Event Bus](/concepts/event-bus) page for more details on events.
+
+## Plugin Manager Methods
+
+The PluginManager provides several useful methods:
+
+```java
+// Check if a plugin is enabled in config
+boolean isPluginEnabled(Plugin plugin)
+
+// Check if a plugin is currently running
+boolean isPluginActive(Plugin plugin)
+
+// Enable/disable a plugin
+void setPluginEnabled(Plugin plugin, boolean enabled)
+
+// Get all loaded plugins
+Collection<Plugin> getPlugins()
+
+// Get conflicting plugins
+List<Plugin> conflictsForPlugin(Plugin plugin)
+```
+
+## Plugin Loading Locations
+
+<Accordion title="Core Plugins">
+  Built-in plugins in the `net.runelite.client.plugins` package, compiled into the client JAR.
+</Accordion>
+
+<Accordion title="Side-Loaded Plugins">
+  JAR files in `~/.runelite/sideloaded-plugins/` directory (only in developer mode).
+  
+  ```java PluginManager.java:273-310
+  public void loadSideLoadPlugins()
+  {
+      if (!developerMode) {
+          return;
+      }
+      
+      File[] files = SIDELOADED_PLUGINS.listFiles();
+      if (files == null) {
+          return;
+      }
+      
+      for (File f : files) {
+          if (f.getName().endsWith(".jar")) {
+              ClassLoader classLoader = new PluginClassLoader(f, getClass().getClassLoader());
+              
+              List<Class<?>> plugins = ClassPath.from(classLoader)
+                  .getAllClasses()
+                  .stream()
+                  .map(ClassInfo::load)
+                  .collect(Collectors.toList());
+              
+              loadPlugins(plugins, null);
+          }
+      }
+  }
+  ```
+</Accordion>
+
+<Accordion title="External Plugins (Plugin Hub)">
+  Plugins installed from the Plugin Hub, managed by the ExternalPluginManager.
+</Accordion>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Keep startUp() and shutDown() Fast">
+    These methods run on the EDT. Defer expensive initialization to background threads or lazy initialization.
+  </Accordion>
+  
+  <Accordion title="Clean Up Resources">
+    Always unregister listeners, close files, and cancel tasks in `shutDown()`.
+  </Accordion>
+  
+  <Accordion title="Use Dependency Injection">
+    Don't create instances manually - let Guice inject them.
+  </Accordion>
+  
+  <Accordion title="Handle Exceptions">
+    Catch and log exceptions - don't let them propagate out of event handlers.
+  </Accordion>
+  
+  <Accordion title="Test Plugin Toggling">
+    Ensure your plugin can be enabled/disabled multiple times without issues.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Event Bus" href="/concepts/event-bus" icon="bolt">
+    Learn about subscribing to game events
+  </Card>
+  <Card title="Configuration" href="/concepts/configuration" icon="gear">
+    Add configurable settings to your plugin
+  </Card>
+  <Card title="UI Overlays" href="/concepts/ui-overlays" icon="layer-group">
+    Create visual overlays in the game
+  </Card>
+  <Card title="Plugin Development" href="/plugins/creating-plugins" icon="code">
+    Start building your first plugin
+  </Card>
+</CardGroup>

@@ -1,0 +1,415 @@
+---
+title: 'Constants'
+description: 'Important constants including AnimationID, ItemID, ObjectID, and more'
+---
+
+RuneLite provides constant classes for common game IDs. These constants make code more readable and maintainable.
+
+## AnimationID
+
+Animation IDs for player and NPC animations.
+
+```java
+import net.runelite.api.AnimationID;
+
+// Mining animations
+if (anim == AnimationID.MINING_BRONZE_PICKAXE ||
+    anim == AnimationID.MINING_IRON_PICKAXE ||
+    anim == AnimationID.MINING_RUNE_PICKAXE) {
+    // Player is mining
+}
+
+// Woodcutting animations
+if (anim == AnimationID.WOODCUTTING_BRONZE ||
+    anim == AnimationID.WOODCUTTING_RUNE) {
+    // Player is woodcutting
+}
+
+// Combat animations
+if (anim == AnimationID.PUNCH) {
+    // Unarmed attack
+}
+
+// Common animations
+int IDLE = AnimationID.IDLE;
+int DEATH = AnimationID.DEATH;
+int EMOTE_LAUGH = AnimationID.EMOTE_LAUGH;
+```
+
+## ItemID
+
+Item IDs for all items in the game.
+
+```java
+import net.runelite.api.ItemID;
+
+// Common items
+int COINS_995 = ItemID.COINS_995;
+int ABYSSAL_WHIP = ItemID.ABYSSAL_WHIP;
+int RUNE_PLATEBODY = ItemID.RUNE_PLATEBODY;
+
+// Food
+int SHARK = ItemID.SHARK;
+int LOBSTER = ItemID.LOBSTER;
+int BREAD = ItemID.BREAD;
+
+// Potions
+int STAMINA_POTION4 = ItemID.STAMINA_POTION4;
+int SUPER_COMBAT_POTION4 = ItemID.SUPER_COMBAT_POTION4;
+
+// Tools
+int BRONZE_PICKAXE = ItemID.BRONZE_PICKAXE;
+int RUNE_PICKAXE = ItemID.RUNE_PICKAXE;
+int DRAGON_AXE = ItemID.DRAGON_AXE;
+
+// Usage in code
+ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
+if (inventory != null && inventory.contains(ItemID.ABYSSAL_WHIP)) {
+    log.info("Player has an Abyssal whip");
+}
+```
+
+## ObjectID
+
+Object IDs for game objects.
+
+```java
+import net.runelite.api.ObjectID;
+
+// Trees
+int TREE = ObjectID.TREE;
+int OAK_TREE = ObjectID.OAK;
+int WILLOW_TREE = ObjectID.WILLOW;
+
+// Rocks
+int COPPER_ROCKS = ObjectID.ROCKS_11936; // Copper
+int TIN_ROCKS = ObjectID.ROCKS_11933; // Tin
+int IRON_ROCKS = ObjectID.ROCKS_11365; // Iron
+
+// Doors and gates
+int DOOR = ObjectID.DOOR;
+int GATE = ObjectID.GATE;
+
+// Banks
+int BANK_BOOTH = ObjectID.BANK_BOOTH;
+int BANK_CHEST = ObjectID.BANK_CHEST;
+
+// Altars
+int ALTAR = ObjectID.ALTAR;
+int CHAOS_ALTAR = ObjectID.CHAOS_ALTAR_411;
+
+// Usage
+for (GameObject obj : tile.getGameObjects()) {
+    if (obj != null && obj.getId() == ObjectID.TREE) {
+        highlightTree(obj);
+    }
+}
+```
+
+## NpcID
+
+NPC IDs for all NPCs in the game.
+
+```java
+import net.runelite.api.NpcID;
+
+// Common NPCs
+int HANS = NpcID.HANS;
+int GOBLIN = NpcID.GOBLIN;
+int COW = NpcID.COW;
+
+// Bankers
+int BANKER = NpcID.BANKER;
+int BANKER_2718 = NpcID.BANKER_2718;
+
+// Bosses
+int ZULRAH = NpcID.ZULRAH;
+int VORKATH = NpcID.VORKATH;
+int GENERAL_GRAARDOR = NpcID.GENERAL_GRAARDOR;
+int KREEARRA = NpcID.KREEARRA;
+
+// Usage
+for (NPC npc : worldView.npcs()) {
+    if (npc != null && npc.getId() == NpcID.ZULRAH) {
+        log.warn("Zulrah detected!");
+    }
+}
+```
+
+## InventoryID
+
+Inventory container IDs.
+
+```java
+import net.runelite.api.InventoryID;
+
+// Get different containers
+ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
+ItemContainer equipment = client.getItemContainer(InventoryID.EQUIPMENT);
+ItemContainer bank = client.getItemContainer(InventoryID.BANK);
+ItemContainer trade = client.getItemContainer(InventoryID.TRADE);
+ItemContainer shop = client.getItemContainer(InventoryID.SHOP_INVENTORY);
+```
+
+## GraphicID (SpotanimID)
+
+Graphic/spotanim effect IDs.
+
+```java
+import net.runelite.api.GraphicID;
+
+// Combat graphics
+int SPLASH = GraphicID.SPLASH;
+int FREEZE = GraphicID.FREEZE;
+int TELEBLOCK = GraphicID.TELEBLOCK;
+
+// Teleport graphics
+int TELEPORT = GraphicID.TELEPORT;
+
+// Usage
+if (actor.hasSpotAnim(GraphicID.FREEZE)) {
+    log.info("Actor is frozen");
+}
+```
+
+## InterfaceID (WidgetID)
+
+Widget/Interface group IDs.
+
+```java
+import net.runelite.api.widgets.InterfaceID;
+
+// Common interfaces
+int BANK = InterfaceID.BANK;
+int INVENTORY = InterfaceID.INVENTORY;
+int EQUIPMENT = InterfaceID.EQUIPMENT;
+int CHATBOX = InterfaceID.CHATBOX;
+int PRAYER = InterfaceID.PRAYER;
+int SPELLBOOK = InterfaceID.SPELLBOOK;
+int COMBAT = InterfaceID.COMBAT;
+
+// Usage
+@Subscribe
+public void onWidgetLoaded(WidgetLoaded event) {
+    if (event.getGroupId() == InterfaceID.BANK) {
+        log.info("Bank opened");
+    }
+}
+```
+
+## SoundEffectID
+
+Sound effect IDs.
+
+```java
+import net.runelite.api.SoundEffectID;
+
+// Play sounds
+client.playSoundEffect(SoundEffectID.ITEM_PICKUP);
+client.playSoundEffect(SoundEffectID.UI_BOOP);
+client.playSoundEffect(SoundEffectID.ATTACK);
+```
+
+## VarbitID and VarPlayer
+
+Variable bit and player variable IDs.
+
+```java
+import net.runelite.api.VarPlayer;
+import net.runelite.api.Varbits;
+
+// Quest points
+int questPoints = client.getVarpValue(VarPlayer.QUEST_POINTS);
+
+// Settings
+int musicVolume = client.getVarbitValue(Varbits.MUSIC_VOLUME);
+int brightness = client.getVarbitValue(Varbits.GAME_BRIGHTNESS);
+
+// Game state
+int runEnergy = client.getVarpValue(VarPlayer.RUN_SLOWED_DEPLETION_ACTIVE);
+```
+
+## SkillID (Skill)
+
+Skill IDs and the Skill enum.
+
+```java
+import net.runelite.api.Skill;
+
+// Get skill levels
+int attackLevel = client.getRealSkillLevel(Skill.ATTACK);
+int boostedHp = client.getBoostedSkillLevel(Skill.HITPOINTS);
+
+// Get skill experience
+int attackXp = client.getSkillExperience(Skill.ATTACK);
+
+// All skills
+Skill[] allSkills = Skill.values();
+for (Skill skill : allSkills) {
+    int level = client.getRealSkillLevel(skill);
+    log.info(skill.getName() + ": " + level);
+}
+```
+
+## MenuAction
+
+Menu action types.
+
+```java
+import net.runelite.api.MenuAction;
+
+@Subscribe
+public void onMenuOptionClicked(MenuOptionClicked event) {
+    MenuAction action = event.getMenuAction();
+    
+    switch (action) {
+        case WALK:
+            // Player clicked to walk
+            break;
+        case CC_OP:
+            // Widget component option
+            break;
+        case ITEM_USE:
+            // Use item
+            break;
+        case EXAMINE_OBJECT:
+            // Examine object
+            break;
+        case NPC_FIRST_OPTION:
+            // First NPC option (usually Attack)
+            break;
+    }
+}
+```
+
+## ChatMessageType
+
+Chat message type enum.
+
+```java
+import net.runelite.api.ChatMessageType;
+
+@Subscribe
+public void onChatMessage(ChatMessage event) {
+    ChatMessageType type = event.getType();
+    
+    switch (type) {
+        case GAMEMESSAGE:
+            // Game messages
+            break;
+        case PUBLICCHAT:
+            // Public chat
+            break;
+        case PRIVATECHAT:
+            // Private messages
+            break;
+        case FRIENDSCHAT:
+            // Friends chat
+            break;
+        case CLAN_CHAT:
+            // Clan chat
+            break;
+    }
+}
+```
+
+## WorldType
+
+World type flags.
+
+```java
+import net.runelite.api.WorldType;
+
+EnumSet<WorldType> worldTypes = client.getWorldType();
+
+if (worldTypes.contains(WorldType.MEMBERS)) {
+    // Members world
+}
+
+if (worldTypes.contains(WorldType.PVP)) {
+    // PvP world
+}
+
+if (worldTypes.contains(WorldType.HIGH_RISK)) {
+    // High risk world
+}
+
+if (worldTypes.contains(WorldType.SKILL_TOTAL)) {
+    // Skill total world
+}
+```
+
+## Constants Class
+
+General game constants.
+
+```java
+import net.runelite.api.Constants;
+
+// Scene size
+int SCENE_SIZE = Constants.SCENE_SIZE; // 104 tiles
+int EXTENDED_SCENE_SIZE = Constants.EXTENDED_SCENE_SIZE; // 256 tiles
+
+// Tile size
+int TILE_FLAG_BRIDGE = Constants.TILE_FLAG_BRIDGE;
+
+// Client tick
+int CLIENT_TICK_LENGTH = Constants.CLIENT_TICK_LENGTH; // 20ms
+int GAME_TICK_LENGTH = Constants.GAME_TICK_LENGTH; // 600ms
+
+// Chunk size  
+int CHUNK_SIZE = Constants.CHUNK_SIZE; // 8 tiles
+
+// Alchemy multipliers
+double HIGH_ALCHEMY_MULTIPLIER = Constants.HIGH_ALCHEMY_MULTIPLIER; // 0.6
+```
+
+## Example: Using Constants
+
+```java
+public class ExamplePlugin extends Plugin {
+    @Subscribe
+    public void onGameTick(GameTick event) {
+        Player player = client.getLocalPlayer();
+        if (player == null) return;
+        
+        // Check animation
+        int anim = player.getAnimation();
+        if (anim == AnimationID.MINING_RUNE_PICKAXE) {
+            log.info("Mining with rune pickaxe");
+        }
+        
+        // Check inventory
+        ItemContainer inv = client.getItemContainer(InventoryID.INVENTORY);
+        if (inv != null && inv.contains(ItemID.SHARK)) {
+            int count = inv.count(ItemID.SHARK);
+            log.info("Have " + count + " sharks");
+        }
+        
+        // Check nearby NPCs
+        WorldView wv = client.getTopLevelWorldView();
+        for (NPC npc : wv.npcs()) {
+            if (npc != null && npc.getId() == NpcID.GOBLIN) {
+                // Found a goblin
+            }
+        }
+    }
+}
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Client" icon="computer" href="/api/client">
+    Client interface
+  </Card>
+  <Card title="Items" icon="gem" href="/api/items">
+    Item handling
+  </Card>
+  <Card title="NPCs" icon="dragon" href="/api/npc">
+    NPC interface
+  </Card>
+  <Card title="Game Objects" icon="cube" href="/api/game-objects">
+    Object handling
+  </Card>
+</CardGroup>

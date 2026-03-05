@@ -1,0 +1,738 @@
+---
+title: Performance Optimization
+description: Techniques for writing high-performance RuneLite plugins
+---
+
+## Overview
+
+RuneLite plugins run in the game client's main thread, meaning poorly optimized code can cause FPS drops, stuttering, and lag. This guide covers best practices for writing performant plugins that don't impact the player experience.
+
+## Understanding the Game Loop
+
+### Frame Rate vs Game Ticks
+
+RuneLite operates on two primary cycles:
+
+```java
+// Game tick - fires every ~600ms (server-controlled)
+@Subscribe
+public void onGameTick(GameTick event)
+{
+    // Runs once per game tick
+    // Good for: inventory checks, quest tracking, stat monitoring
+}
+
+// Frame rendering - fires 50-60 times per second
+@Subscribe
+public void onClientTick(ClientTick event) 
+{
+    // Runs every frame before rendering
+    // Be careful: this fires very frequently!
+}
+```
+
+<Warning>
+Code in rendering callbacks (`onClientTick`, overlay `render()` methods) must be extremely fast. Avoid heavy computation, I/O, or complex loops.
+</Warning>
+
+### Critical Rendering Path
+
+From `Callbacks.java:68-94`, the client fires these callbacks every frame:
+
+```java
+public interface Callbacks
+{
+    /**
+     * Called each frame
+     */
+    void frame();
+    
+    /**
+     * Called after the scene is drawn.
+     */
+    void drawScene();
+    
+    /**
+     * Called after logic that is drawing 2D objects is processed.
+     */
+    void drawAboveOverheads();
+    
+    /**
+     * Client top-most draw method, rendering over top of most of game interfaces.
+     */
+    void draw(MainBufferProvider mainBufferProvider, Graphics graphics, int x, int y);
+}
+```
+
+Anything executed during these callbacks directly impacts frame rate.
+
+## Event Handler Optimization
+
+### Event Priority
+
+Choose the right event for your use case:
+
+```java
+// ✓ Good - only runs on game state changes
+@Subscribe
+public void onItemContainerChanged(ItemContainerChanged event)
+{
+    if (event.getContainerId() == InventoryID.INVENTORY.getId())
+    {
+        updateInventoryValue();
+    }
+}
+
+// ✗ Bad - runs every game tick unnecessarily
+@Subscribe
+public void onGameTick(GameTick event)
+{
+    // Checking inventory every tick when it rarely changes
+    updateInventoryValue();
+}
+```
+
+### Early Returns
+
+Minimize work by returning early:
+
+```java
+@Subscribe
+public void onMenuOptionClicked(MenuOptionClicked event)
+{
+    // Early return for irrelevant events
+    if (!event.getMenuOption().equals("Attack"))
+    {
+        return;
+    }
+    
+    // Only process attack actions
+    handleAttack(event);
+}
+```
+
+### Batch Operations
+
+```java
+// ✗ Bad - updating overlay every time something changes
+private void onItemAdded(Item item)
+{
+    overlayManager.updateOverlay();
+}
+
+private void onItemRemoved(Item item)
+{
+    overlayManager.updateOverlay();
+}
+
+// ✓ Good - batch updates on game tick
+private boolean needsUpdate = false;
+
+private void onItemAdded(Item item)
+{
+    needsUpdate = true;
+}
+
+private void onItemRemoved(Item item)
+{
+    needsUpdate = true;
+}
+
+@Subscribe
+public void onGameTick(GameTick event)
+{
+    if (needsUpdate)
+    {
+        overlayManager.updateOverlay();
+        needsUpdate = false;
+    }
+}
+```
+
+## Overlay Performance
+
+### Minimize Rendering Work
+
+```java
+public class ExampleOverlay extends Overlay
+{
+    @Override
+    public Dimension render(Graphics2D graphics)
+    {
+        // ✗ Bad - expensive API calls in render
+        for (NPC npc : client.getNpcs())
+        {
+            if (npc.getName() != null && npc.getName().contains("Dragon"))
+            {
+                Point point = Perspective.localToCanvas(client, 
+                    npc.getLocalLocation(), client.getPlane());
+                renderTextLocation(graphics, npc.getName(), point);
+            }
+        }
+        
+        return null;
+    }
+}
+```
+
+```java
+// ✓ Good - cache calculations, update on game tick
+public class OptimizedOverlay extends Overlay
+{
+    private final List<RenderData> toRender = new ArrayList<>();
+    
+    // Update cache on game tick (not every frame)
+    public void updateCache()
+    {
+        toRender.clear();
+        
+        for (NPC npc : client.getNpcs())
+        {
+            if (npc.getName() != null && npc.getName().contains("Dragon"))
+            {
+                Point point = Perspective.localToCanvas(client,
+                    npc.getLocalLocation(), client.getPlane());
+                    
+                if (point != null)
+                {
+                    toRender.add(new RenderData(npc.getName(), point));
+                }
+            }
+        }
+    }
+    
+    @Override
+    public Dimension render(Graphics2D graphics)
+    {
+        // Just render pre-calculated data
+        for (RenderData data : toRender)
+        {
+            renderTextLocation(graphics, data.text, data.point);
+        }
+        
+        return null;
+    }
+}
+```
+
+### Culling Off-Screen Elements
+
+```java
+@Override
+public Dimension render(Graphics2D graphics)
+{
+    Rectangle viewport = graphics.getClipBounds();
+    
+    for (RenderData data : toRender)
+    {
+        // Skip rendering if off-screen
+        if (!viewport.contains(data.point))
+        {
+            continue;
+        }
+        
+        renderTextLocation(graphics, data.text, data.point);
+    }
+    
+    return null;
+}
+```
+
+## API Call Optimization
+
+### Caching API Results
+
+```java
+// ✗ Bad - repeated expensive lookups
+public void processNpcs()
+{
+    for (int i = 0; i < 10; i++)
+    {
+        for (NPC npc : client.getNpcs())
+        {
+            if (npc.getName().equals("Guard"))
+            {
+                // Process guard
+            }
+        }
+    }
+}
+
+// ✓ Good - cache the NPC list
+public void processNpcs()
+{
+    List<NPC> npcs = client.getNpcs();
+    List<NPC> guards = new ArrayList<>();
+    
+    for (NPC npc : npcs)
+    {
+        if ("Guard".equals(npc.getName()))
+        {
+            guards.add(npc);
+        }
+    }
+    
+    for (int i = 0; i < 10; i++)
+    {
+        for (NPC guard : guards)
+        {
+            // Process guard
+        }
+    }
+}
+```
+
+### Expensive API Calls
+
+Some API methods are more expensive than others:
+
+```java
+// Very fast (direct field access)
+client.getGameCycle();
+client.getLocalPlayer();
+player.getName();
+
+// Fast (simple calculations)
+player.getWorldLocation();
+widget.getId();
+
+// Moderate (iterations or allocations)
+client.getNpcs();              // Returns defensive copy
+client.getPlayers();            // Returns defensive copy
+client.getGraphicsObjects();    // Returns defensive copy
+
+// Slow (complex calculations)
+Perspective.worldToCanvas(...); // Projection math
+Perspective.getTilePoly(...);   // Polygon generation
+client.getScene().getTiles();   // Large array copy
+```
+
+<Info>
+Use profiling tools to identify which API calls are bottlenecks in your specific plugin.
+</Info>
+
+## Collection Management
+
+### Use Appropriate Data Structures
+
+```java
+// ✗ Bad - O(n) lookups
+private List<String> trackedPlayers = new ArrayList<>();
+
+public boolean isTracked(String name)
+{
+    return trackedPlayers.contains(name); // O(n)
+}
+
+// ✓ Good - O(1) lookups
+private Set<String> trackedPlayers = new HashSet<>();
+
+public boolean isTracked(String name)
+{
+    return trackedPlayers.contains(name); // O(1)
+}
+```
+
+### Avoid Unnecessary Allocations
+
+```java
+// ✗ Bad - creates new list every frame
+@Override
+public Dimension render(Graphics2D graphics)
+{
+    List<String> names = new ArrayList<>();
+    for (NPC npc : client.getNpcs())
+    {
+        names.add(npc.getName());
+    }
+    // render names...
+}
+
+// ✓ Good - reuse existing list
+private final List<String> cachedNames = new ArrayList<>();
+
+public void updateCache()
+{
+    cachedNames.clear();
+    for (NPC npc : client.getNpcs())
+    {
+        cachedNames.add(npc.getName());
+    }
+}
+
+@Override
+public Dimension render(Graphics2D graphics)
+{
+    // render cachedNames...
+}
+```
+
+### Collection Sizing
+
+```java
+// ✗ Bad - list will resize multiple times
+List<Item> items = new ArrayList<>();
+for (Item item : inventory.getItems())
+{
+    items.add(item);
+}
+
+// ✓ Good - pre-sized to avoid resizing
+Item[] inventoryItems = inventory.getItems();
+List<Item> items = new ArrayList<>(inventoryItems.length);
+for (Item item : inventoryItems)
+{
+    items.add(item);
+}
+```
+
+## String Operations
+
+### String Comparison
+
+```java
+// ✗ Bad - doesn't handle null, less efficient
+if (npc.getName().equals("Guard"))
+{
+    // ...
+}
+
+// ✓ Good - handles null, more efficient
+if ("Guard".equals(npc.getName()))
+{
+    // ...
+}
+
+// ✓ Better - for repeated comparisons
+private static final String GUARD = "Guard";
+
+if (GUARD.equals(npc.getName()))
+{
+    // ...
+}
+```
+
+### String Building
+
+```java
+// ✗ Bad - creates many intermediate strings
+String message = "Player " + player.getName() + 
+                 " at " + player.getWorldLocation() +
+                 " with " + player.getCombatLevel() + " combat";
+
+// ✓ Good - single allocation
+String message = String.format("Player %s at %s with %d combat",
+    player.getName(), 
+    player.getWorldLocation(),
+    player.getCombatLevel());
+
+// ✓ Better - for multiple concatenations
+StringBuilder sb = new StringBuilder();
+sb.append("Player ").append(player.getName())
+  .append(" at ").append(player.getWorldLocation())
+  .append(" with ").append(player.getCombatLevel())
+  .append(" combat");
+String message = sb.toString();
+```
+
+## Pattern Matching and Text Processing
+
+### Compile Patterns Once
+
+```java
+// ✗ Bad - compiles pattern every time
+public boolean matchesPattern(String text)
+{
+    Pattern pattern = Pattern.compile("Dragon.*");
+    return pattern.matcher(text).matches();
+}
+
+// ✓ Good - compile once, reuse forever
+private static final Pattern DRAGON_PATTERN = Pattern.compile("Dragon.*");
+
+public boolean matchesPattern(String text)
+{
+    return DRAGON_PATTERN.matcher(text).matches();
+}
+```
+
+### Simple String Methods First
+
+```java
+// ✗ Bad - regex for simple task
+if (text.matches(".*Guard.*"))
+{
+    // ...
+}
+
+// ✓ Good - simple string method
+if (text.contains("Guard"))
+{
+    // ...
+}
+```
+
+## Async Processing
+
+### Offload Heavy Work
+
+```java
+import net.runelite.client.util.AsyncBufferedImage;
+import javax.inject.Inject;
+import java.util.concurrent.ScheduledExecutorService;
+
+public class AsyncExample
+{
+    @Inject
+    private ScheduledExecutorService executor;
+    
+    private volatile String cachedResult;
+    
+    @Subscribe
+    public void onGameTick(GameTick event)
+    {
+        // Offload expensive calculation to background thread
+        executor.submit(() -> {
+            String result = performExpensiveCalculation();
+            
+            // Store result for main thread to use
+            cachedResult = result;
+        });
+    }
+    
+    @Override
+    public Dimension render(Graphics2D graphics)
+    {
+        // Use cached result from background thread
+        if (cachedResult != null)
+        {
+            graphics.drawString(cachedResult, 10, 10);
+        }
+        return null;
+    }
+    
+    private String performExpensiveCalculation()
+    {
+        // Heavy computation here
+        return "result";
+    }
+}
+```
+
+<Warning>
+Be careful with thread safety when accessing game state from background threads. The Client instance is not thread-safe.
+</Warning>
+
+### Loading Images Asynchronously
+
+```java
+private AsyncBufferedImage icon;
+
+@Inject
+private void init()
+{
+    // Load image asynchronously
+    icon = new AsyncBufferedImage(
+        getClass().getResourceAsStream("/icon.png")
+    );
+}
+
+@Override
+public Dimension render(Graphics2D graphics)
+{
+    BufferedImage image = icon.get();
+    if (image != null)
+    {
+        graphics.drawImage(image, 0, 0, null);
+    }
+    return null;
+}
+```
+
+## Memory Management
+
+### Avoid Memory Leaks
+
+```java
+// ✗ Bad - never clears old entries
+private final Map<String, PlayerData> playerCache = new HashMap<>();
+
+@Subscribe
+public void onPlayerSpawned(PlayerSpawned event)
+{
+    playerCache.put(event.getPlayer().getName(), new PlayerData());
+}
+
+// ✓ Good - clears old entries
+private final Map<String, PlayerData> playerCache = new HashMap<>();
+
+@Subscribe
+public void onPlayerSpawned(PlayerSpawned event)
+{
+    playerCache.put(event.getPlayer().getName(), new PlayerData());
+}
+
+@Subscribe
+public void onPlayerDespawned(PlayerDespawned event)
+{
+    playerCache.remove(event.getPlayer().getName());
+}
+
+@Subscribe
+public void onGameStateChanged(GameStateChanged event)
+{
+    if (event.getGameState() == GameState.LOGIN_SCREEN)
+    {
+        playerCache.clear(); // Clear on logout
+    }
+}
+```
+
+### Use Weak References for Caches
+
+```java
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import java.util.concurrent.TimeUnit;
+
+// Cache with automatic eviction
+private final Cache<Integer, ItemDefinition> itemCache = CacheBuilder.newBuilder()
+    .maximumSize(1000)
+    .expireAfterAccess(5, TimeUnit.MINUTES)
+    .build();
+
+public ItemDefinition getItemDefinition(int itemId)
+{
+    return itemCache.get(itemId, () -> loadItemDefinition(itemId));
+}
+```
+
+## Profiling and Debugging
+
+### Adding Performance Metrics
+
+```java
+import com.google.common.base.Stopwatch;
+
+@Subscribe
+public void onGameTick(GameTick event)
+{
+    Stopwatch stopwatch = Stopwatch.createStarted();
+    
+    performExpensiveOperation();
+    
+    stopwatch.stop();
+    log.debug("Operation took: {}ms", stopwatch.elapsed(TimeUnit.MILLISECONDS));
+    
+    if (stopwatch.elapsed(TimeUnit.MILLISECONDS) > 100)
+    {
+        log.warn("Slow operation detected!");
+    }
+}
+```
+
+### Frame Time Monitoring
+
+```java
+private long lastFrameTime = 0;
+
+@Subscribe
+public void onClientTick(ClientTick event)
+{
+    long currentTime = System.nanoTime();
+    
+    if (lastFrameTime > 0)
+    {
+        long frameTimeMs = (currentTime - lastFrameTime) / 1_000_000;
+        if (frameTimeMs > 16) // More than 16ms = below 60 FPS
+        {
+            log.warn("Slow frame: {}ms", frameTimeMs);
+        }
+    }
+    
+    lastFrameTime = currentTime;
+}
+```
+
+## Configuration Performance
+
+### Lazy Configuration Loading
+
+```java
+// ✗ Bad - loads config every time
+public void doSomething()
+{
+    if (config.isFeatureEnabled())
+    {
+        // ...
+    }
+}
+
+// ✓ Good - cache config value
+private boolean featureEnabled;
+
+@Subscribe
+public void onConfigChanged(ConfigChanged event)
+{
+    if (event.getGroup().equals(CONFIG_GROUP))
+    {
+        featureEnabled = config.isFeatureEnabled();
+    }
+}
+
+public void doSomething()
+{
+    if (featureEnabled)
+    {
+        // ...
+    }
+}
+```
+
+## Best Practices Summary
+
+<Card title="Performance Optimization Checklist">
+- ✓ Use appropriate events (avoid `onClientTick` when possible)
+- ✓ Cache API results instead of repeated calls
+- ✓ Pre-calculate overlay data on game ticks, not every frame
+- ✓ Use efficient data structures (HashSet vs ArrayList for lookups)
+- ✓ Avoid string concatenation in loops
+- ✓ Compile regex patterns once as static finals
+- ✓ Offload heavy work to background threads
+- ✓ Clear collections and caches to prevent memory leaks
+- ✓ Profile code to identify actual bottlenecks
+- ✓ Test with multiple plugins enabled to find conflicts
+</Card>
+
+## Common Pitfalls
+
+<Accordion title="Rendering Every Frame">
+**Problem**: Recalculating everything in overlay render methods
+
+**Solution**: Cache calculations on game tick, just render in overlay
+</Accordion>
+
+<Accordion title="Iterating All NPCs/Players Repeatedly">
+**Problem**: Calling `client.getNpcs()` in tight loops
+
+**Solution**: Cache the list once per tick, filter once
+</Accordion>
+
+<Accordion title="String Operations in Hot Paths">
+**Problem**: Creating many temporary strings during rendering
+
+**Solution**: Pre-format strings on tick events, reuse StringBuilder
+</Accordion>
+
+<Accordion title="Not Clearing Caches">
+**Problem**: Maps and lists grow unbounded over time
+
+**Solution**: Clear on logout, use expiring caches, remove stale entries
+</Accordion>
+
+## Related Topics
+
+- [Plugin Development](/guides/plugin-development)
+- [Overlay System](/api/overlays)
+- [Event System](/api/events)
+- [Deobfuscation](/advanced/deobfuscation)

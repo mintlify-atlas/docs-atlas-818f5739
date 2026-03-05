@@ -1,0 +1,515 @@
+---
+title: 'Widget System'
+description: 'Widget interface for UI elements and interface manipulation'
+---
+
+Widgets are on-screen UI elements in RuneScape, such as the minimap, inventory interface, chatbox, and more.
+
+## Getting Widgets
+
+### By Group and Child ID
+
+<ParamField path="groupId" type="int" required>
+  The widget group (interface) ID
+</ParamField>
+
+<ParamField path="childId" type="int" required>
+  The child widget ID
+</ParamField>
+
+<ParamField path="Returns" type="Widget" nullable>
+  The widget, or null if not found
+</ParamField>
+
+```java
+// Get chatbox widget
+Widget chatbox = client.getWidget(InterfaceID.CHATBOX, 0);
+
+// Get inventory container
+Widget inventory = client.getWidget(InterfaceID.INVENTORY, 0);
+
+// Get bank inventory
+Widget bankInventory = client.getWidget(InterfaceID.BANK, 1);
+```
+
+### By Component ID
+
+<ParamField path="componentId" type="int" required>
+  The packed component ID
+</ParamField>
+
+<ParamField path="Returns" type="Widget" nullable>
+  The widget
+</ParamField>
+
+```java
+Widget widget = client.getWidget(componentId);
+```
+
+### Root Widgets
+
+```java
+Widget[] roots = client.getWidgetRoots();
+for (Widget root : roots) {
+    if (root != null) {
+        // Process root widget
+    }
+}
+```
+
+## Widget Properties
+
+### getId
+
+<ParamField path="Returns" type="int">
+  The widget ID
+</ParamField>
+
+Gets the widget's packed ID.
+
+```java
+int id = widget.getId();
+```
+
+### getType
+
+<ParamField path="Returns" type="int">
+  The widget type
+</ParamField>
+
+Gets the type of the widget.
+
+```java
+int type = widget.getType();
+if (type == WidgetType.LAYER) {
+    // Container widget
+}
+else if (type == WidgetType.TEXT) {
+    // Text widget
+}
+else if (type == WidgetType.GRAPHIC) {
+    // Image widget
+}
+else if (type == WidgetType.MODEL) {
+    // 3D model widget
+}
+else if (type == WidgetType.INVENTORY) {
+    // Inventory grid widget
+}
+```
+
+### setType
+
+<ParamField path="type" type="int" required>
+  The widget type to set
+</ParamField>
+
+Sets the widget type.
+
+```java
+widget.setType(WidgetType.TEXT);
+```
+
+## Widget Hierarchy
+
+### getParent
+
+<ParamField path="Returns" type="Widget" nullable>
+  The parent widget
+</ParamField>
+
+Gets the parent widget if this is a child.
+
+```java
+Widget parent = widget.getParent();
+```
+
+### getParentId
+
+<ParamField path="Returns" type="int">
+  The parent ID, or -1 if no parent
+</ParamField>
+
+Gets the ID of the parent widget.
+
+```java
+int parentId = widget.getParentId();
+```
+
+### getChildren
+
+<ParamField path="Returns" type="Widget[]" nullable>
+  Array of child widgets (sparse)
+</ParamField>
+
+Gets the dynamic children in a sparse array.
+
+```java
+Widget[] children = widget.getChildren();
+if (children != null) {
+    for (Widget child : children) {
+        if (child != null) {
+            // Process child
+        }
+    }
+}
+```
+
+### getChild
+
+<ParamField path="index" type="int" required>
+  The child index
+</ParamField>
+
+<ParamField path="Returns" type="Widget" nullable>
+  The child widget
+</ParamField>
+
+Gets a specific child widget.
+
+```java
+Widget child = widget.getChild(0);
+```
+
+### getDynamicChildren / getStaticChildren / getNestedChildren
+
+```java
+Widget[] dynamicChildren = widget.getDynamicChildren();
+Widget[] staticChildren = widget.getStaticChildren();
+Widget[] nestedChildren = widget.getNestedChildren();
+```
+
+## Position and Size
+
+### Position
+
+```java
+// Relative position (to parent)
+int relativeX = widget.getRelativeX();
+int relativeY = widget.getRelativeY();
+
+// Canvas position (absolute)
+int canvasX = widget.getCanvasLocation().getX();
+int canvasY = widget.getCanvasLocation().getY();
+
+// Original position
+int originalX = widget.getOriginalX();
+int originalY = widget.getOriginalY();
+
+// Set original position
+widget.setOriginalX(100);
+widget.setOriginalY(50);
+widget.revalidate(); // Apply changes
+```
+
+### setForcedPosition
+
+<ParamField path="x" type="int" required>
+  X position relative to parent
+</ParamField>
+
+<ParamField path="y" type="int" required>
+  Y position relative to parent
+</ParamField>
+
+Forces the widget to a specific position.
+
+```java
+widget.setForcedPosition(100, 50);
+// Clear forced position
+widget.setForcedPosition(-1, -1);
+```
+
+### Size
+
+```java
+int width = widget.getWidth();
+int height = widget.getHeight();
+
+// Set size
+widget.setOriginalWidth(200);
+widget.setOriginalHeight(100);
+widget.revalidate();
+```
+
+### Bounds
+
+```java
+Rectangle bounds = widget.getBounds();
+int x = bounds.getX();
+int y = bounds.getY();
+int width = bounds.getWidth();
+int height = bounds.getHeight();
+```
+
+## Text Widgets
+
+### getText
+
+<ParamField path="Returns" type="String">
+  The widget text
+</ParamField>
+
+Gets the text displayed on the widget.
+
+```java
+String text = widget.getText();
+```
+
+### setText
+
+<ParamField path="text" type="String" required>
+  The text to display
+</ParamField>
+
+<ParamField path="Returns" type="Widget">
+  The widget (for chaining)
+</ParamField>
+
+Sets the text displayed on the widget.
+
+```java
+widget.setText("Custom text");
+```
+
+### Text Color
+
+```java
+// Get color (RGB24)
+int color = widget.getTextColor();
+
+// Set color
+widget.setTextColor(0xFF0000); // Red
+```
+
+### Font
+
+```java
+int fontId = widget.getFontId();
+widget.setFontId(FontID.PLAIN_12);
+```
+
+## Visual Properties
+
+### getName
+
+<ParamField path="Returns" type="String">
+  The widget name
+</ParamField>
+
+Gets the name/tooltip base of the widget.
+
+```java
+String name = widget.getName();
+// Used in tooltips like "Activate Quick-prayers"
+```
+
+### setName
+
+<ParamField path="name" type="String" required>
+  The new name
+</ParamField>
+
+```java
+widget.setName("Custom Name");
+```
+
+### Visibility
+
+```java
+boolean hidden = widget.isHidden();
+widget.setHidden(false); // Show widget
+widget.setHidden(true);  // Hide widget
+
+boolean selfHidden = widget.isSelfHidden();
+```
+
+### Opacity
+
+```java
+// Get opacity (0 = opaque, 255 = transparent)
+int opacity = widget.getOpacity();
+
+// Set opacity
+widget.setOpacity(128); // Semi-transparent
+```
+
+## Model Widgets
+
+### Model ID and Type
+
+```java
+// Get model ID
+int modelId = widget.getModelId();
+
+// Set model
+widget.setModelId(ItemID.ABYSSAL_WHIP);
+
+// Get/set model type
+int modelType = widget.getModelType();
+widget.setModelType(WidgetModelType.ITEM);
+// Types: ITEM, NPC, PLAYER, MODEL
+```
+
+### Animation
+
+```java
+int animId = widget.getAnimationId();
+widget.setAnimationId(AnimationID.SOME_ANIM);
+```
+
+### Rotation
+
+```java
+int rotationX = widget.getRotationX();
+int rotationY = widget.getRotationY();
+int rotationZ = widget.getRotationZ();
+
+widget.setRotationX(0);
+widget.setRotationY(0);
+widget.setRotationZ(0);
+```
+
+## Inventory Widgets
+
+### Item IDs and Quantities
+
+```java
+if (widget.getType() == WidgetType.INVENTORY) {
+    int[] itemIds = widget.getItemIds();
+    int[] itemQuantities = widget.getItemQuantities();
+    
+    for (int i = 0; i < itemIds.length; i++) {
+        int itemId = itemIds[i];
+        int quantity = itemQuantities[i];
+        
+        if (itemId > 0) {
+            // Slot contains an item
+            itemId--; // Item IDs are stored as id+1
+            ItemComposition comp = client.getItemDefinition(itemId);
+            String name = comp.getName();
+        }
+    }
+}
+```
+
+## Click Configuration
+
+### getClickMask
+
+<ParamField path="Returns" type="int">
+  The click configuration bitfield
+</ParamField>
+
+Gets the click configuration.
+
+```java
+int clickMask = widget.getClickMask();
+```
+
+### setClickMask
+
+<ParamField path="mask" type="int" required>
+  The click mask
+</ParamField>
+
+Sets the click configuration.
+
+```java
+// Make widget draggable
+widget.setClickMask(widget.getClickMask() | WidgetConfig.DRAG);
+
+// Make widget a use target
+widget.setClickMask(widget.getClickMask() | WidgetConfig.WIDGET_USE_TARGET);
+```
+
+## Actions
+
+### getActions
+
+<ParamField path="Returns" type="String[]">
+  Array of action strings
+</ParamField>
+
+Gets the widget's actions.
+
+```java
+String[] actions = widget.getActions();
+for (String action : actions) {
+    if (action != null && !action.isEmpty()) {
+        log.info("Action: " + action);
+    }
+}
+```
+
+### setActions
+
+<ParamField path="actions" type="String[]" required>
+  The new actions
+</ParamField>
+
+Sets the widget's actions.
+
+```java
+String[] actions = new String[]{"Option 1", "Option 2", null, null, null};
+widget.setActions(actions);
+```
+
+## Sprite Widgets
+
+```java
+int spriteId = widget.getSpriteId();
+widget.setSpriteId(spriteId);
+
+// Set sprite tiling
+widget.setSpriteTiling(true);
+```
+
+## Example: Find Widget by Name
+
+```java
+public Widget findWidgetByName(String name) {
+    for (Widget root : client.getWidgetRoots()) {
+        if (root == null) continue;
+        
+        Widget found = searchWidget(root, name);
+        if (found != null) {
+            return found;
+        }
+    }
+    return null;
+}
+
+private Widget searchWidget(Widget widget, String name) {
+    if (name.equals(widget.getName())) {
+        return widget;
+    }
+    
+    Widget[] children = widget.getChildren();
+    if (children != null) {
+        for (Widget child : children) {
+            if (child == null) continue;
+            Widget found = searchWidget(child, name);
+            if (found != null) {
+                return found;
+            }
+        }
+    }
+    
+    return null;
+}
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Client" icon="computer" href="/api/client">
+    Client interface
+  </Card>
+  <Card title="Events" icon="bolt" href="/api/event-types">
+    Widget events
+  </Card>
+  <Card title="Items" icon="gem" href="/api/items">
+    Items in widgets
+  </Card>
+</CardGroup>

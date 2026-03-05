@@ -1,0 +1,402 @@
+---
+title: 'Common Event Types'
+description: 'Reference for commonly used RuneLite event types'
+---
+
+This page documents the most commonly used event types in RuneLite plugin development.
+
+## Game State Events
+
+### GameStateChanged
+
+<ParamField path="gameState" type="GameState">
+  The new game state
+</ParamField>
+
+Triggered when the game state changes.
+
+```java
+@Subscribe
+public void onGameStateChanged(GameStateChanged event) {
+    GameState newState = event.getGameState();
+    
+    if (newState == GameState.LOGGED_IN) {
+        initializePlugin();
+    }
+    else if (newState == GameState.LOGIN_SCREEN) {
+        cleanupPlugin();
+    }
+}
+```
+
+### GameTick
+
+Triggered once per game tick (~600ms) after all packets are processed.
+
+```java
+@Subscribe
+public void onGameTick(GameTick event) {
+    // Called approximately 100 times per minute
+    performPeriodicUpdate();
+}
+```
+
+### ClientTick
+
+Triggered on every client tick (~20ms).
+
+```java
+@Subscribe
+public void onClientTick(ClientTick event) {
+    // Called ~50 times per second
+    // Use sparingly for performance
+}
+```
+
+## Chat Events
+
+### ChatMessage
+
+<ParamField path="type" type="ChatMessageType">
+  The message type
+</ParamField>
+
+<ParamField path="name" type="String">
+  Player name who sent the message
+</ParamField>
+
+<ParamField path="message" type="String">
+  The message contents
+</ParamField>
+
+<ParamField path="sender" type="String">
+  The sender/channel name
+</ParamField>
+
+Triggered when a chat message is received.
+
+```java
+@Subscribe
+public void onChatMessage(ChatMessage event) {
+    if (event.getType() == ChatMessageType.GAMEMESSAGE) {
+        String message = event.getMessage();
+        if (message.contains("You've just advanced")) {
+            log.info("Level up!");
+        }
+    }
+    
+    if (event.getType() == ChatMessageType.PUBLICCHAT) {
+        String playerName = event.getName();
+        String message = event.getMessage();
+        log.info(playerName + " said: " + message);
+    }
+}
+```
+
+## Player Events
+
+### PlayerSpawned
+
+<ParamField path="player" type="Player">
+  The player that spawned
+</ParamField>
+
+Triggered when a player enters the viewable area.
+
+```java
+@Subscribe
+public void onPlayerSpawned(PlayerSpawned event) {
+    Player player = event.getPlayer();
+    String name = player.getName();
+    int combatLevel = player.getCombatLevel();
+    log.info(name + " (level " + combatLevel + ") appeared");
+}
+```
+
+### PlayerDespawned
+
+<ParamField path="player" type="Player">
+  The player that despawned
+</ParamField>
+
+Triggered when a player leaves the viewable area.
+
+```java
+@Subscribe
+public void onPlayerDespawned(PlayerDespawned event) {
+    Player player = event.getPlayer();
+    log.info(player.getName() + " disappeared");
+}
+```
+
+## NPC Events
+
+### NpcSpawned
+
+<ParamField path="npc" type="NPC">
+  The NPC that spawned
+</ParamField>
+
+Triggered when an NPC spawns.
+
+```java
+@Subscribe
+public void onNpcSpawned(NpcSpawned event) {
+    NPC npc = event.getNpc();
+    int id = npc.getId();
+    String name = npc.getName();
+    
+    if (id == NpcID.ZULRAH) {
+        log.warn("Zulrah spawned!");
+    }
+}
+```
+
+### NpcDespawned
+
+<ParamField path="npc" type="NPC">
+  The NPC that despawned
+</ParamField>
+
+Triggered when an NPC despawns.
+
+```java
+@Subscribe
+public void onNpcDespawned(NpcDespawned event) {
+    NPC npc = event.getNpc();
+    trackedNpcs.remove(npc);
+}
+```
+
+### NpcChanged
+
+<ParamField path="npc" type="NPC">
+  The new NPC
+</ParamField>
+
+<ParamField path="old" type="NPC">
+  The old NPC
+</ParamField>
+
+Triggered when an NPC transforms.
+
+```java
+@Subscribe
+public void onNpcChanged(NpcChanged event) {
+    NPC oldNpc = event.getOld();
+    NPC newNpc = event.getNpc();
+    log.info("NPC changed from " + oldNpc.getId() + " to " + newNpc.getId());
+}
+```
+
+## Object Events
+
+### GameObjectSpawned
+
+<ParamField path="tile" type="Tile">
+  The tile
+</ParamField>
+
+<ParamField path="gameObject" type="GameObject">
+  The spawned object
+</ParamField>
+
+Triggered when a game object spawns.
+
+```java
+@Subscribe
+public void onGameObjectSpawned(GameObjectSpawned event) {
+    GameObject obj = event.getGameObject();
+    int id = obj.getId();
+    WorldPoint location = obj.getWorldLocation();
+    
+    if (id == ObjectID.ROCK) {
+        log.info("Rock spawned at " + location);
+    }
+}
+```
+
+### GameObjectDespawned
+
+Triggered when a game object despawns.
+
+```java
+@Subscribe
+public void onGameObjectDespawned(GameObjectDespawned event) {
+    GameObject obj = event.getGameObject();
+    highlightedObjects.remove(obj);
+}
+```
+
+## Item Events
+
+### ItemContainerChanged
+
+<ParamField path="containerId" type="int">
+  The container ID
+</ParamField>
+
+<ParamField path="itemContainer" type="ItemContainer">
+  The changed container
+</ParamField>
+
+Triggered when an item container changes.
+
+```java
+@Subscribe
+public void onItemContainerChanged(ItemContainerChanged event) {
+    if (event.getContainerId() == InventoryID.INVENTORY.getId()) {
+        ItemContainer inventory = event.getItemContainer();
+        processInventory(inventory);
+    }
+}
+```
+
+### ItemSpawned
+
+<ParamField path="tile" type="Tile">
+  The tile
+</ParamField>
+
+<ParamField path="item" type="TileItem">
+  The spawned item
+</ParamField>
+
+Triggered when an item appears on the ground.
+
+```java
+@Subscribe
+public void onItemSpawned(ItemSpawned event) {
+    TileItem item = event.getItem();
+    int id = item.getId();
+    int quantity = item.getQuantity();
+    WorldPoint location = event.getTile().getWorldLocation();
+    
+    ItemComposition comp = client.getItemDefinition(id);
+    log.info(comp.getName() + " x" + quantity + " spawned at " + location);
+}
+```
+
+## Widget Events
+
+### WidgetLoaded
+
+<ParamField path="groupId" type="int">
+  The interface group ID
+</ParamField>
+
+Triggered when an interface is loaded.
+
+```java
+@Subscribe
+public void onWidgetLoaded(WidgetLoaded event) {
+    int groupId = event.getGroupId();
+    
+    if (groupId == InterfaceID.BANK) {
+        log.info("Bank interface opened");
+    }
+}
+```
+
+### WidgetClosed
+
+Triggered when an interface is closed.
+
+```java
+@Subscribe
+public void onWidgetClosed(WidgetClosed event) {
+    int groupId = event.getGroupId();
+    log.info("Interface " + groupId + " closed");
+}
+```
+
+## Menu Events
+
+### MenuOpened
+
+<ParamField path="Returns" type="MenuEntry[]">
+  The menu entries
+</ParamField>
+
+Triggered when a right-click menu is opened.
+
+```java
+@Subscribe
+public void onMenuOpened(MenuOpened event) {
+    MenuEntry[] entries = event.getMenuEntries();
+    
+    // Add custom menu entry
+    MenuEntry customEntry = client.getMenu().createMenuEntry(-1)
+        .setOption("Custom Action")
+        .setTarget("<col=ff9040>Target</col>")
+        .setType(MenuAction.RUNELITE);
+}
+```
+
+### MenuOptionClicked
+
+<ParamField path="menuOption" type="String">
+  The clicked option
+</ParamField>
+
+<ParamField path="menuTarget" type="String">
+  The menu target
+</ParamField>
+
+<ParamField path="menuAction" type="MenuAction">
+  The action type
+</ParamField>
+
+Triggered when a menu option is clicked.
+
+```java
+@Subscribe
+public void onMenuOptionClicked(MenuOptionClicked event) {
+    String option = event.getMenuOption();
+    String target = event.getMenuTarget();
+    
+    if (option.equals("Attack") && target.contains("Goblin")) {
+        log.info("Attacking a goblin");
+    }
+    
+    // Prevent the action
+    if (shouldBlock(event)) {
+        event.consume();
+    }
+}
+```
+
+## Animation Events
+
+### AnimationChanged
+
+<ParamField path="actor" type="Actor">
+  The actor whose animation changed
+</ParamField>
+
+Triggered when an actor's animation changes.
+
+```java
+@Subscribe
+public void onAnimationChanged(AnimationChanged event) {
+    Actor actor = event.getActor();
+    int animationId = actor.getAnimation();
+    
+    if (actor == client.getLocalPlayer()) {
+        if (animationId == AnimationID.MINING_RUNE_PICKAXE) {
+            log.info("Started mining");
+        }
+    }
+}
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Events Overview" icon="bolt" href="/api/events-overview">
+    Event system overview
+  </Card>
+  <Card title="Event Handling" icon="code" href="/api/event-handling">
+    Event handling patterns
+  </Card>
+</CardGroup>

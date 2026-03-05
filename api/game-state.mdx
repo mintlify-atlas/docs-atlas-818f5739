@@ -1,0 +1,276 @@
+---
+title: 'GameState'
+description: 'Game state enumeration representing the current state of the client'
+---
+
+The `GameState` enum represents the various states the RuneScape client can be in during its lifecycle.
+
+## Overview
+
+The game state changes as the player progresses through login, loading, and gameplay. You can check the current game state using:
+
+```java
+GameState state = client.getGameState();
+```
+
+## Game States
+
+### UNKNOWN
+
+<ParamField path="State Value" type="int">
+  -1
+</ParamField>
+
+Unknown or undefined game state.
+
+```java
+if (client.getGameState() == GameState.UNKNOWN) {
+    // Game state is unknown
+}
+```
+
+### STARTING
+
+<ParamField path="State Value" type="int">
+  0
+</ParamField>
+
+The client is starting up and initializing.
+
+### LOGIN_SCREEN
+
+<ParamField path="State Value" type="int">
+  10
+</ParamField>
+
+The client is at the login screen, waiting for credentials.
+
+```java
+if (client.getGameState() == GameState.LOGIN_SCREEN) {
+    // Can set username/password here
+    client.setUsername("username");
+    client.setPassword("password");
+}
+```
+
+### LOGIN_SCREEN_AUTHENTICATOR
+
+<ParamField path="State Value" type="int">
+  11
+</ParamField>
+
+The client is at the login screen entering an authenticator code.
+
+```java
+if (client.getGameState() == GameState.LOGIN_SCREEN_AUTHENTICATOR) {
+    client.setOtp("123456");
+}
+```
+
+### LOGGING_IN
+
+<ParamField path="State Value" type="int">
+  20
+</ParamField>
+
+A player is currently logging in to the game.
+
+### LOADING
+
+<ParamField path="State Value" type="int">
+  25
+</ParamField>
+
+The game is loading assets, map data, and preparing the game world.
+
+```java
+if (client.getGameState() == GameState.LOADING) {
+    // World is being loaded
+    log.info("Loading game world...");
+}
+```
+
+### LOGGED_IN
+
+<ParamField path="State Value" type="int">
+  30
+</ParamField>
+
+The user has successfully logged in and is in-game.
+
+```java
+if (client.getGameState() == GameState.LOGGED_IN) {
+    // Player is in game and can interact
+    Player player = client.getLocalPlayer();
+    if (player != null) {
+        WorldPoint location = player.getWorldLocation();
+    }
+}
+```
+
+<Note>
+  Most plugin functionality should only execute when the game state is `LOGGED_IN`, as game data may not be available in other states.
+</Note>
+
+### CONNECTION_LOST
+
+<ParamField path="State Value" type="int">
+  40
+</ParamField>
+
+Connection to the server was lost.
+
+```java
+if (client.getGameState() == GameState.CONNECTION_LOST) {
+    log.warn("Connection to server lost");
+}
+```
+
+### HOPPING
+
+<ParamField path="State Value" type="int">
+  45
+</ParamField>
+
+A world hop is currently taking place.
+
+```java
+if (client.getGameState() == GameState.HOPPING) {
+    // Player is switching worlds
+}
+```
+
+## Usage in Plugins
+
+### GameStateChanged Event
+
+Plugins can listen for game state changes using the `GameStateChanged` event:
+
+```java
+@Subscribe
+public void onGameStateChanged(GameStateChanged event) {
+    GameState newState = event.getGameState();
+    
+    if (newState == GameState.LOGGED_IN) {
+        log.info("Player logged in");
+        // Initialize plugin data
+    }
+    else if (newState == GameState.LOGIN_SCREEN) {
+        log.info("Returned to login screen");
+        // Clear plugin data
+    }
+}
+```
+
+### Checking State Before Actions
+
+Always verify the game state before performing actions that require the player to be logged in:
+
+```java
+public void performAction() {
+    if (client.getGameState() != GameState.LOGGED_IN) {
+        return; // Can't perform action
+    }
+    
+    Player player = client.getLocalPlayer();
+    if (player == null) {
+        return;
+    }
+    
+    // Safe to perform action
+}
+```
+
+### State Transitions
+
+<Expandable title="Common State Transition Flows">
+  **Normal Login:**
+  1. `STARTING` → `LOGIN_SCREEN`
+  2. `LOGIN_SCREEN` → `LOGGING_IN`
+  3. `LOGGING_IN` → `LOADING`
+  4. `LOADING` → `LOGGED_IN`
+  
+  **With Authenticator:**
+  1. `LOGIN_SCREEN` → `LOGIN_SCREEN_AUTHENTICATOR`
+  2. `LOGIN_SCREEN_AUTHENTICATOR` → `LOGGING_IN`
+  3. `LOGGING_IN` → `LOADING`
+  4. `LOADING` → `LOGGED_IN`
+  
+  **World Hopping:**
+  1. `LOGGED_IN` → `HOPPING`
+  2. `HOPPING` → `LOADING`
+  3. `LOADING` → `LOGGED_IN`
+  
+  **Connection Loss:**
+  1. `LOGGED_IN` → `CONNECTION_LOST`
+  2. `CONNECTION_LOST` → `LOGIN_SCREEN`
+</Expandable>
+
+## Utility Method
+
+### of(int state)
+
+Converts a raw state value to its corresponding GameState enum value.
+
+```java
+int stateValue = 30;
+GameState state = GameState.of(stateValue); // Returns LOGGED_IN
+```
+
+## Example: State-Dependent Plugin
+
+```java
+public class MyPlugin extends Plugin {
+    @Inject
+    private Client client;
+    
+    private boolean pluginActive = false;
+    
+    @Subscribe
+    public void onGameStateChanged(GameStateChanged event) {
+        switch (event.getGameState()) {
+            case LOGGED_IN:
+                // Enable plugin functionality
+                pluginActive = true;
+                initializePlugin();
+                break;
+                
+            case LOGIN_SCREEN:
+            case HOPPING:
+            case CONNECTION_LOST:
+                // Disable plugin and clean up
+                pluginActive = false;
+                cleanupPlugin();
+                break;
+                
+            case LOADING:
+                // Prepare for transition
+                log.debug("Loading new area...");
+                break;
+        }
+    }
+    
+    @Subscribe
+    public void onGameTick(GameTick event) {
+        // Only process if player is logged in
+        if (!pluginActive || client.getGameState() != GameState.LOGGED_IN) {
+            return;
+        }
+        
+        // Safe to access game data
+        Player player = client.getLocalPlayer();
+        // ... plugin logic
+    }
+}
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Client" icon="computer" href="/api/client">
+    Client interface
+  </Card>
+  <Card title="Events" icon="bolt" href="/api/events-overview">
+    Event system overview
+  </Card>
+</CardGroup>

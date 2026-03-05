@@ -1,0 +1,251 @@
+---
+title: Installation
+description: Set up RuneLite for development on Windows, macOS, and Linux
+---
+
+This guide will walk you through setting up the RuneLite development environment on your machine.
+
+## Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+<Steps>
+  <Step title="Java Development Kit (JDK)">
+    RuneLite requires **JDK 11 or higher**. We recommend using JDK 11, 17, or 21.
+    
+    <CodeGroup>
+    ```bash Windows
+    # Download from https://adoptium.net/
+    # Or use a package manager:
+    winget install EclipseAdoptium.Temurin.11.JDK
+    ```
+    
+    ```bash macOS
+    # Using Homebrew
+    brew install openjdk@11
+    ```
+    
+    ```bash Linux
+    # Ubuntu/Debian
+    sudo apt update
+    sudo apt install openjdk-11-jdk
+    
+    # Fedora
+    sudo dnf install java-11-openjdk-devel
+    
+    # Arch
+    sudo pacman -S jdk11-openjdk
+    ```
+    </CodeGroup>
+    
+    Verify your installation:
+    ```bash
+    java -version
+    javac -version
+    ```
+  </Step>
+  
+  <Step title="Git">
+    You'll need Git to clone the RuneLite repository.
+    
+    <CodeGroup>
+    ```bash Windows
+    winget install Git.Git
+    ```
+    
+    ```bash macOS
+    brew install git
+    ```
+    
+    ```bash Linux
+    sudo apt install git  # Ubuntu/Debian
+    sudo dnf install git  # Fedora
+    sudo pacman -S git    # Arch
+    ```
+    </CodeGroup>
+  </Step>
+  
+  <Step title="IntelliJ IDEA (Recommended)">
+    While you can use any IDE, IntelliJ IDEA is the recommended IDE for RuneLite development.
+    
+    Download from [JetBrains](https://www.jetbrains.com/idea/download/). The free Community Edition works great.
+  </Step>
+</Steps>
+
+## Clone the Repository
+
+First, clone the RuneLite repository to your local machine:
+
+```bash
+git clone https://github.com/runelite/runelite.git
+cd runelite
+```
+
+<Info>
+  The repository contains several subprojects:
+  - `cache` - Libraries for reading/writing cache files
+  - `runelite-api` - RuneLite API interfaces for accessing the client
+  - `runelite-client` - Game client with plugin system
+</Info>
+
+## Import into IntelliJ IDEA
+
+<Steps>
+  <Step title="Open the Project">
+    1. Launch IntelliJ IDEA
+    2. Click **Open** on the welcome screen
+    3. Navigate to the cloned `runelite` directory and select it
+    4. Click **OK**
+  </Step>
+  
+  <Step title="Import as Gradle Project">
+    IntelliJ will automatically detect the Gradle project structure:
+    
+    1. A popup will appear asking to import the Gradle project - click **Import Gradle Project**
+    2. IntelliJ will begin downloading dependencies (this may take a few minutes)
+    3. Wait for the indexing process to complete
+    
+    <Note>
+      The first build may take 5-10 minutes as Gradle downloads all dependencies. Subsequent builds will be much faster.
+    </Note>
+  </Step>
+  
+  <Step title="Configure JDK">
+    Ensure IntelliJ is using the correct JDK:
+    
+    1. Go to **File** → **Project Structure** → **Project**
+    2. Set **SDK** to JDK 11 or higher
+    3. Set **Language level** to **11 - Local variable syntax for lambda parameters**
+    4. Click **OK**
+  </Step>
+</Steps>
+
+## Gradle Configuration
+
+RuneLite uses Gradle with Kotlin DSL for build configuration. The project structure is defined in `settings.gradle.kts`:
+
+```kotlin
+rootProject.name = "runelite"
+
+include("jshell")
+project(":jshell").projectDir = file("./runelite-jshell")
+include("client")
+project(":client").projectDir = file("./runelite-client")
+
+includeBuild("cache")
+includeBuild("runelite-api")
+includeBuild("runelite-gradle-plugin")
+```
+
+<Tip>
+  If you encounter Gradle sync issues, try:
+  - **File** → **Invalidate Caches and Restart**
+  - Delete the `.gradle` folder in the project root
+  - Re-import the project
+</Tip>
+
+## Verify Installation
+
+Let's make sure everything is set up correctly by running the client:
+
+<Steps>
+  <Step title="Locate the RuneLite Main Class">
+    Navigate to:
+    ```
+    runelite-client/src/main/java/net/runelite/client/RuneLite.java
+    ```
+  </Step>
+  
+  <Step title="Run the Client">
+    **Option 1: Using IntelliJ**
+    1. Open `RuneLite.java`
+    2. Right-click anywhere in the file
+    3. Select **Run 'RuneLite.main()'**
+    
+    **Option 2: Using Gradle**
+    ```bash
+    ./gradlew runelite-client:run
+    ```
+    
+    On Windows:
+    ```bash
+    gradlew.bat runelite-client:run
+    ```
+  </Step>
+  
+  <Step title="First Launch">
+    The client will:
+    1. Show a splash screen while initializing
+    2. Download the OSRS game client
+    3. Create a `.runelite` directory in your home folder for configuration and cache
+    4. Launch the game window
+    
+    <Info>
+      RuneLite stores data in `~/.runelite/`:
+      - `cache/` - HTTP cache
+      - `plugins/` - External plugins
+      - `screenshots/` - Screenshots
+      - `logs/` - Log files
+    </Info>
+  </Step>
+</Steps>
+
+## Enable Developer Mode
+
+For development, you can enable developer mode which provides additional tools:
+
+```bash
+./gradlew runelite-client:run --args="--developer-mode"
+```
+
+Or in IntelliJ, add `--developer-mode` to the run configuration:
+1. **Run** → **Edit Configurations**
+2. Find the **RuneLite** configuration
+3. Add `--developer-mode` to **Program arguments**
+
+<Warning>
+  Developer mode requires assertions to be enabled. IntelliJ enables `-ea` by default, but if you see an error about assertions, add `-ea` to your VM options.
+</Warning>
+
+## Troubleshooting
+
+### "Classes are out of date"
+
+If you see `AbstractMethodError` with a message about classes being out of date:
+
+```bash
+./gradlew clean build
+```
+
+### Out of Memory Errors
+
+Increase Gradle's heap size by editing `gradle.properties`:
+
+```properties
+org.gradle.jvmargs=-Dfile.encoding=UTF-8 -Xmx2048m
+```
+
+### IntelliJ Not Finding Classes
+
+1. **File** → **Invalidate Caches and Restart**
+2. Re-import the Gradle project
+3. Ensure project SDK is set correctly
+
+## Next Steps
+
+Now that you have RuneLite installed and running:
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Learn the basics of plugin development
+  </Card>
+  <Card title="Plugin Development" icon="puzzle-piece" href="/plugins/creating-plugins">
+    Deep dive into creating plugins
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/client">
+    Explore the RuneLite API
+  </Card>
+  <Card title="Contributing" icon="github" href="https://github.com/runelite/runelite/wiki/Developer-Guide">
+    Contribute to RuneLite
+  </Card>
+</CardGroup>

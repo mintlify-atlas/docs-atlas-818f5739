@@ -1,0 +1,642 @@
+---
+title: 'Client Interface'
+description: 'Core client interface for interacting with the RuneScape game client'
+---
+
+The `Client` interface is the main entry point for interacting with the RuneScape game client. It extends `GameEngine` and provides access to all game state, player information, world data, and client functionality.
+
+## Getting the Client Instance
+
+In RuneLite plugins, the client is typically injected:
+
+```java
+@Inject
+private Client client;
+```
+
+## Game State
+
+### getGameState
+
+<ParamField path="Returns" type="GameState">
+  The current game state
+</ParamField>
+
+Gets the current state of the game client.
+
+```java
+GameState state = client.getGameState();
+if (state == GameState.LOGGED_IN) {
+    // Player is logged in
+}
+```
+
+### setGameState
+
+<ParamField path="gameState" type="GameState" required>
+  The game state to set
+</ParamField>
+
+Sets the current game state.
+
+```java
+client.setGameState(GameState.HOPPING);
+```
+
+## Player Information
+
+### getLocalPlayer
+
+<ParamField path="Returns" type="Player">
+  The logged in player instance
+</ParamField>
+
+Gets the local player (the logged in player).
+
+```java
+Player player = client.getLocalPlayer();
+if (player != null) {
+    String name = player.getName();
+    WorldPoint location = player.getWorldLocation();
+}
+```
+
+### getFollower
+
+<ParamField path="Returns" type="NPC" nullable>
+  The player's follower (e.g., pet), or null
+</ParamField>
+
+Gets the local player's follower, such as a pet.
+
+```java
+NPC follower = client.getFollower();
+if (follower != null) {
+    // Player has a pet following them
+}
+```
+
+## Skills and Experience
+
+### getBoostedSkillLevel
+
+<ParamField path="skill" type="Skill" required>
+  The skill to get the boosted level for
+</ParamField>
+
+<ParamField path="Returns" type="int">
+  The current modified skill level (including boosts/reductions)
+</ParamField>
+
+Gets the current modified level of a skill.
+
+```java
+int currentHp = client.getBoostedSkillLevel(Skill.HITPOINTS);
+int boostedAttack = client.getBoostedSkillLevel(Skill.ATTACK);
+```
+
+### getRealSkillLevel
+
+<ParamField path="skill" type="Skill" required>
+  The skill to get the real level for
+</ParamField>
+
+<ParamField path="Returns" type="int">
+  The base skill level (without boosts)
+</ParamField>
+
+Gets the real (unboosted) level of a skill.
+
+```java
+int baseAttack = client.getRealSkillLevel(Skill.ATTACK);
+```
+
+### getTotalLevel
+
+<ParamField path="Returns" type="int">
+  The total level across all skills
+</ParamField>
+
+Calculates the total level from real skill levels.
+
+```java
+int totalLevel = client.getTotalLevel();
+```
+
+### getSkillExperience
+
+<ParamField path="skill" type="Skill" required>
+  The skill to get experience for
+</ParamField>
+
+<ParamField path="Returns" type="int">
+  The experience in the skill
+</ParamField>
+
+Gets the current experience towards a skill.
+
+```java
+int attackXp = client.getSkillExperience(Skill.ATTACK);
+```
+
+### getOverallExperience
+
+<ParamField path="Returns" type="long">
+  Total experience across all skills
+</ParamField>
+
+Get the total experience of the player.
+
+```java
+long totalXp = client.getOverallExperience();
+```
+
+## Camera
+
+### Camera Position
+
+```java
+// Get camera coordinates (local coordinates)
+int cameraX = client.getCameraX();
+int cameraY = client.getCameraY();
+int cameraZ = client.getCameraZ();
+
+// Floating point camera position
+double fpX = client.getCameraFpX();
+double fpY = client.getCameraFpY();
+double fpZ = client.getCameraFpZ();
+```
+
+### Camera Orientation
+
+<Expandable title="Camera Pitch and Yaw">
+  Camera orientation is measured in JAU (Jagex Angle Units), where 1 JAU = 1/1024 of a revolution (360 degrees).
+  
+  ```java
+  // Get current camera pitch (vertical angle)
+  int pitch = client.getCameraPitch();
+  double fpPitch = client.getCameraFpPitch();
+  
+  // Get current camera yaw (horizontal angle)
+  int yaw = client.getCameraYaw();
+  double fpYaw = client.getCameraFpYaw();
+  
+  // Get target camera angles (what the camera should be)
+  int targetYaw = client.getCameraYawTarget();
+  int targetPitch = client.getCameraPitchTarget();
+  
+  // Set target camera angles
+  client.setCameraYawTarget(512); // Face south
+  client.setCameraPitchTarget(256);
+  ```
+</Expandable>
+
+## World and Scene
+
+### getWorld
+
+<ParamField path="Returns" type="int">
+  The current world number
+</ParamField>
+
+Gets the current world number of the logged in player.
+
+```java
+int world = client.getWorld();
+```
+
+### getWorldList
+
+<ParamField path="Returns" type="World[]">
+  Array of all RuneScape worlds
+</ParamField>
+
+Gets a list of all RuneScape worlds.
+
+```java
+World[] worlds = client.getWorldList();
+for (World world : worlds) {
+    System.out.println("World " + world.getId());
+}
+```
+
+### getTopLevelWorldView
+
+<ParamField path="Returns" type="WorldView">
+  The top-level world view
+</ParamField>
+
+Gets the top-level world view containing the main game scene.
+
+```java
+WorldView worldView = client.getTopLevelWorldView();
+Scene scene = worldView.getScene();
+int plane = worldView.getPlane();
+```
+
+## Variables (Varps, Varbits, Varcs)
+
+### getVarpValue
+
+<ParamField path="varpId" type="int" required>
+  The VarPlayer ID
+</ParamField>
+
+<ParamField path="Returns" type="int">
+  The variable value
+</ParamField>
+
+Gets the value of a given VarPlayer.
+
+```java
+int questPoints = client.getVarpValue(VarPlayer.QUEST_POINTS);
+```
+
+### getVarbitValue
+
+<ParamField path="varbitId" type="int" required>
+  The varbit ID
+</ParamField>
+
+<ParamField path="Returns" type="int">
+  The varbit value
+</ParamField>
+
+Gets the value of the given varbit.
+
+```java
+int musicVolume = client.getVarbitValue(Varbits.MUSIC_VOLUME);
+```
+
+### setVarbit
+
+<ParamField path="varbit" type="int" required>
+  The varbit id
+</ParamField>
+
+<ParamField path="value" type="int" required>
+  The new value
+</ParamField>
+
+Sets the value of a varbit.
+
+```java
+client.setVarbit(Varbits.SOME_SETTING, 1);
+```
+
+### getVarcIntValue / getVarcStrValue
+
+Gets the value of a VarClient (client-side variable).
+
+```java
+// Get integer VarClient
+int intValue = client.getVarcIntValue(VarClientInt.INVENTORY_TAB);
+
+// Get string VarClient
+String strValue = client.getVarcStrValue(VarClientStr.SEARCH_TERM);
+
+// Set VarClient values
+client.setVarcIntValue(VarClientInt.SOME_VAR, 5);
+client.setVarcStrValue(VarClientStr.SOME_VAR, "value");
+```
+
+## Inventory and Items
+
+### getItemContainer
+
+<ParamField path="inventory" type="InventoryID" required>
+  The inventory type
+</ParamField>
+
+<ParamField path="Returns" type="ItemContainer" nullable>
+  The item container, or null if not loaded
+</ParamField>
+
+Gets the item container for an inventory.
+
+```java
+// Get player's inventory
+ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
+if (inventory != null) {
+    Item[] items = inventory.getItems();
+    for (Item item : items) {
+        if (item.getId() != -1) {
+            System.out.println("Item: " + item.getId() + " x" + item.getQuantity());
+        }
+    }
+}
+
+// Get equipment
+ItemContainer equipment = client.getItemContainer(InventoryID.EQUIPMENT);
+
+// Get bank
+ItemContainer bank = client.getItemContainer(InventoryID.BANK);
+```
+
+### getItemDefinition
+
+<ParamField path="id" type="int" required>
+  The item ID
+</ParamField>
+
+<ParamField path="Returns" type="ItemComposition">
+  The item composition/definition
+</ParamField>
+
+Gets the item composition corresponding to an item ID.
+
+```java
+ItemComposition itemComp = client.getItemDefinition(ItemID.ABYSSAL_WHIP);
+String name = itemComp.getName();
+int value = itemComp.getPrice();
+```
+
+## Widgets
+
+### getWidget
+
+<ParamField path="groupId" type="int" required>
+  The widget group ID
+</ParamField>
+
+<ParamField path="childId" type="int" required>
+  The child widget ID
+</ParamField>
+
+<ParamField path="Returns" type="Widget" nullable>
+  The widget, or null if not found
+</ParamField>
+
+Gets a widget by its group ID and child ID.
+
+```java
+// Get the chatbox widget
+Widget chatbox = client.getWidget(InterfaceID.CHATBOX, 0);
+
+// Get inventory widget
+Widget inventory = client.getWidget(InterfaceID.INVENTORY, 0);
+```
+
+### getWidgetRoots
+
+<ParamField path="Returns" type="Widget[]">
+  Array of root widgets
+</ParamField>
+
+Gets the root widgets (top-level interface containers).
+
+```java
+Widget[] roots = client.getWidgetRoots();
+```
+
+## Chat
+
+### addChatMessage
+
+<ParamField path="type" type="ChatMessageType" required>
+  The type of message
+</ParamField>
+
+<ParamField path="name" type="String" required>
+  The name of the player that sent the message
+</ParamField>
+
+<ParamField path="message" type="String" required>
+  The message contents
+</ParamField>
+
+<ParamField path="sender" type="String" required>
+  The sender/channel name
+</ParamField>
+
+<ParamField path="Returns" type="MessageNode">
+  The message node for the message
+</ParamField>
+
+Adds a new chat message to the chatbox.
+
+```java
+client.addChatMessage(
+    ChatMessageType.GAMEMESSAGE,
+    "",
+    "This is a game message",
+    null
+);
+
+client.addChatMessage(
+    ChatMessageType.PUBLICCHAT,
+    "PlayerName",
+    "Hello world!",
+    null
+);
+```
+
+## Menu
+
+### getMenu
+
+<ParamField path="Returns" type="Menu">
+  The client menu
+</ParamField>
+
+Gets the client menu (right-click menu).
+
+```java
+Menu menu = client.getMenu();
+MenuEntry[] entries = menu.getMenuEntries();
+
+// Create a new menu entry
+MenuEntry entry = menu.createMenuEntry(-1)
+    .setOption("Examine")
+    .setTarget("<col=ff9040>Tree</col>")
+    .setType(MenuAction.EXAMINE_OBJECT);
+```
+
+### isMenuOpen
+
+<ParamField path="Returns" type="boolean">
+  True if right-click menu is open
+</ParamField>
+
+Checks whether a right-click menu is currently open.
+
+```java
+if (client.isMenuOpen()) {
+    // Right-click menu is visible
+}
+```
+
+## Canvas and Viewport
+
+### Canvas Dimensions
+
+```java
+// Get canvas size
+int canvasWidth = client.getCanvasWidth();
+int canvasHeight = client.getCanvasHeight();
+
+// Get viewport size (game rendering area)
+int viewportWidth = client.getViewportWidth();
+int viewportHeight = client.getViewportHeight();
+
+// Get viewport offset
+int viewportXOffset = client.getViewportXOffset();
+int viewportYOffset = client.getViewportYOffset();
+
+// Get zoom level
+int scale = client.getScale();
+```
+
+### Mouse Position
+
+```java
+Point mousePos = client.getMouseCanvasPosition();
+int mouseX = mousePos.getX();
+int mouseY = mousePos.getY();
+```
+
+## Scripts and Commands
+
+### runScript
+
+<ParamField path="args" type="Object..." required>
+  The script ID followed by arguments
+</ParamField>
+
+Executes a ClientScript from the cache.
+
+```java
+// Run a script with ID and arguments
+client.runScript(ScriptID.SOME_SCRIPT, arg1, arg2);
+```
+
+### createScriptEvent
+
+<ParamField path="args" type="Object..." required>
+  The script ID followed by arguments
+</ParamField>
+
+<ParamField path="Returns" type="ScriptEvent">
+  The script event
+</ParamField>
+
+Creates a ScriptEvent for executing a ClientScript.
+
+```java
+ScriptEvent event = client.createScriptEvent(ScriptID.SOME_SCRIPT);
+event.run();
+```
+
+## Object and NPC Definitions
+
+### getObjectDefinition
+
+<ParamField path="objectId" type="int" required>
+  The object ID
+</ParamField>
+
+<ParamField path="Returns" type="ObjectComposition">
+  The object composition
+</ParamField>
+
+```java
+ObjectComposition objComp = client.getObjectDefinition(ObjectID.TREE);
+String name = objComp.getName();
+String[] actions = objComp.getActions();
+```
+
+### getNpcDefinition
+
+<ParamField path="npcId" type="int" required>
+  The NPC ID
+</ParamField>
+
+<ParamField path="Returns" type="NPCComposition">
+  The NPC composition
+</ParamField>
+
+```java
+NPCComposition npcComp = client.getNpcDefinition(NpcID.GOBLIN);
+String name = npcComp.getName();
+int combatLevel = npcComp.getCombatLevel();
+```
+
+## Game Cycle and Timing
+
+### getGameCycle
+
+<ParamField path="Returns" type="int">
+  The client game cycle count
+</ParamField>
+
+Gets the local client's game cycle. This value is incremented every 20ms.
+
+```java
+int cycle = client.getGameCycle();
+```
+
+### getTickCount
+
+<ParamField path="Returns" type="int">
+  The server tick count
+</ParamField>
+
+Gets the current server tick count.
+
+```java
+int tick = client.getTickCount();
+```
+
+## Miscellaneous
+
+### Energy and Weight
+
+```java
+// Get run energy (in units of 1/100th of a percentage)
+int energy = client.getEnergy();
+double energyPercent = energy / 100.0;
+
+// Get player weight
+int weight = client.getWeight();
+```
+
+### getFPS
+
+```java
+int fps = client.getFPS();
+```
+
+### playSoundEffect
+
+<ParamField path="id" type="int" required>
+  The sound effect ID
+</ParamField>
+
+Plays a sound effect at the player's current location.
+
+```java
+client.playSoundEffect(SoundEffectID.ITEM_PICKUP);
+
+// Play sound at specific location
+client.playSoundEffect(SoundEffectID.SOME_SOUND, x, y, range);
+
+// Play sound with delay
+client.playSoundEffect(SoundEffectID.SOME_SOUND, x, y, range, delay);
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="GameState" icon="circle-dot" href="/api/game-state">
+    Game state enumeration
+  </Card>
+  <Card title="Player" icon="user" href="/api/player">
+    Player interface
+  </Card>
+  <Card title="WorldView" icon="globe" href="/api/world">
+    WorldView interface
+  </Card>
+  <Card title="Widget" icon="window" href="/api/widgets">
+    Widget system
+  </Card>
+</CardGroup>

@@ -1,0 +1,414 @@
+---
+title: 'Perspective Utility'
+description: 'Perspective utility for coordinate conversion and projection'
+---
+
+The `Perspective` utility class provides methods for converting between in-game coordinates and canvas coordinates.
+
+## Coordinate Systems
+
+### World Coordinates
+
+- **WorldPoint**: Absolute coordinates in the game world
+- Format: `WorldPoint(x, y, plane)`
+- Example: Lumbridge castle is at approximately `(3222, 3218, 0)`
+
+### Local Coordinates
+
+- **LocalPoint**: Coordinates relative to the current scene
+- Format: `LocalPoint(x, y)`
+- Scale: 128 units per tile
+- Scene is 104x104 tiles
+
+### Scene Coordinates
+
+- Integer tile coordinates within the current scene
+- Range: 0-103 on both X and Y axes
+- Plane: 0-3
+
+### Canvas Coordinates
+
+- **Point**: X, Y pixel coordinates on the game canvas
+- Top-left corner is (0, 0)
+
+## Constants
+
+```java
+// Unit for trigonometric calculations
+public static final double UNIT = 0.0030679615d; // ~pi/1024
+
+// Local coordinate constants
+public static final int LOCAL_COORD_BITS = 7;
+public static final int LOCAL_TILE_SIZE = 128; // 1 << 7
+public static final int LOCAL_HALF_TILE_SIZE = 64;
+
+// Scene size
+public static final int SCENE_SIZE = 104; // in tiles
+
+// Trigonometric tables
+public static final int[] SINE = new int[2048];
+public static final int[] COSINE = new int[2048];
+```
+
+## Coordinate Conversion
+
+### localToCanvas
+
+<ParamField path="client" type="Client" required>
+  The game client
+</ParamField>
+
+<ParamField path="point" type="LocalPoint" required>
+  The local point to convert
+</ParamField>
+
+<ParamField path="plane" type="int" required>
+  The plane/height level
+</ParamField>
+
+<ParamField path="Returns" type="Point" nullable>
+  The canvas point, or null if not visible
+</ParamField>
+
+Converts local coordinates to canvas coordinates.
+
+```java
+LocalPoint localPoint = actor.getLocalLocation();
+int plane = actor.getWorldLocation().getPlane();
+
+Point canvasPoint = Perspective.localToCanvas(
+    client,
+    localPoint,
+    plane
+);
+
+if (canvasPoint != null) {
+    graphics.fillOval(canvasPoint.getX() - 2, canvasPoint.getY() - 2, 4, 4);
+}
+```
+
+### localToCanvas (with height offset)
+
+<ParamField path="heightOffset" type="int" required>
+  Z-axis offset in local coordinates
+</ParamField>
+
+Converts local coordinates to canvas with a height offset.
+
+```java
+Point canvasPoint = Perspective.localToCanvas(
+    client,
+    localPoint,
+    plane,
+    100 // 100 units above ground
+);
+```
+
+### worldToCanvas
+
+<ParamField path="client" type="Client" required>
+  The game client
+</ParamField>
+
+<ParamField path="point" type="WorldPoint" required>
+  The world point to convert
+</ParamField>
+
+<ParamField path="Returns" type="Point" nullable>
+  The canvas point
+</ParamField>
+
+Converts world coordinates to canvas coordinates.
+
+```java
+WorldPoint worldPoint = new WorldPoint(3200, 3200, 0);
+Point canvasPoint = Perspective.worldToCanvas(client, worldPoint);
+```
+
+### worldToLocal
+
+<ParamField path="client" type="Client" required>
+  The game client
+</ParamField>
+
+<ParamField path="point" type="WorldPoint" required>
+  The world point
+</ParamField>
+
+<ParamField path="Returns" type="LocalPoint" nullable>
+  The local point, or null if not in scene
+</ParamField>
+
+Converts world coordinates to local coordinates.
+
+```java
+WorldPoint worldPoint = new WorldPoint(3200, 3200, 0);
+LocalPoint localPoint = Perspective.worldToLocal(client, worldPoint);
+```
+
+### localToWorld
+
+<ParamField path="client" type="Client" required>
+  The game client
+</ParamField>
+
+<ParamField path="x" type="int" required>
+  Local X coordinate
+</ParamField>
+
+<ParamField path="y" type="int" required>
+  Local Y coordinate
+</ParamField>
+
+<ParamField path="plane" type="int" required>
+  The plane
+</ParamField>
+
+<ParamField path="Returns" type="WorldPoint">
+  The world point
+</ParamField>
+
+Converts local coordinates to world coordinates.
+
+```java
+LocalPoint localPoint = actor.getLocalLocation();
+WorldPoint worldPoint = LocalPoint.fromLocal(
+    client,
+    localPoint.getX(),
+    localPoint.getY(),
+    plane
+);
+```
+
+## Tile Operations
+
+### getTileHeight
+
+<ParamField path="client" type="Client" required>
+  The game client
+</ParamField>
+
+<ParamField path="localPoint" type="LocalPoint" required>
+  The local point
+</ParamField>
+
+<ParamField path="plane" type="int" required>
+  The plane
+</ParamField>
+
+<ParamField path="Returns" type="int">
+  The tile height
+</ParamField>
+
+Gets the height of a tile at given coordinates.
+
+```java
+LocalPoint lp = actor.getLocalLocation();
+int height = Perspective.getTileHeight(client, lp, plane);
+```
+
+### getCanvasTilePoly
+
+<ParamField path="client" type="Client" required>
+  The game client
+</ParamField>
+
+<ParamField path="localLocation" type="LocalPoint" required>
+  The tile location
+</ParamField>
+
+<ParamField path="Returns" type="Polygon" nullable>
+  Polygon representing the tile
+</ParamField>
+
+Gets a polygon representing a tile on the canvas.
+
+```java
+LocalPoint tileLocation = new LocalPoint(6400, 6400);
+Polygon tilePoly = Perspective.getCanvasTilePoly(client, tileLocation);
+
+if (tilePoly != null) {
+    graphics.setColor(Color.RED);
+    graphics.draw(tilePoly);
+}
+```
+
+### getCanvasTileAreaPoly
+
+<ParamField path="client" type="Client" required>
+  The game client
+</ParamField>
+
+<ParamField path="localLocation" type="LocalPoint" required>
+  The southwest corner
+</ParamField>
+
+<ParamField path="size" type="int" required>
+  The size in tiles
+</ParamField>
+
+<ParamField path="Returns" type="Polygon" nullable>
+  Polygon for the area
+</ParamField>
+
+Gets a polygon for a multi-tile area.
+
+```java
+// Draw a 3x3 tile area
+Polygon areaPoly = Perspective.getCanvasTileAreaPoly(
+    client,
+    localPoint,
+    3
+);
+```
+
+## Text Positioning
+
+### getCanvasTextLocation
+
+<ParamField path="client" type="Client" required>
+  The game client
+</ParamField>
+
+<ParamField path="graphics" type="Graphics2D" required>
+  Graphics context for font metrics
+</ParamField>
+
+<ParamField path="localLocation" type="LocalPoint" required>
+  The location
+</ParamField>
+
+<ParamField path="text" type="String" required>
+  The text to position
+</ParamField>
+
+<ParamField path="zOffset" type="int" required>
+  Z-axis offset
+</ParamField>
+
+<ParamField path="Returns" type="Point" nullable>
+  The canvas point for text
+</ParamField>
+
+Calculates where to draw text above a location.
+
+```java
+String text = "Target";
+Point textLoc = Perspective.getCanvasTextLocation(
+    client,
+    graphics,
+    actor.getLocalLocation(),
+    text,
+    200
+);
+
+if (textLoc != null) {
+    graphics.drawString(text, textLoc.getX(), textLoc.getY());
+}
+```
+
+## Minimap Operations
+
+### worldToMinimap
+
+<ParamField path="client" type="Client" required>
+  The game client
+</ParamField>
+
+<ParamField path="world" type="WorldPoint" required>
+  The world point
+</ParamField>
+
+<ParamField path="Returns" type="Point" nullable>
+  The minimap point
+</ParamField>
+
+Converts world coordinates to minimap coordinates.
+
+```java
+WorldPoint worldPoint = actor.getWorldLocation();
+Point minimapPoint = Perspective.worldToMinimap(client, worldPoint);
+
+if (minimapPoint != null) {
+    graphics.fillOval(
+        minimapPoint.getX() - 2,
+        minimapPoint.getY() - 2,
+        4, 4
+    );
+}
+```
+
+## Example: Drawing on Tiles
+
+```java
+@Override
+public Dimension render(Graphics2D graphics) {
+    Player player = client.getLocalPlayer();
+    if (player == null) {
+        return null;
+    }
+    
+    WorldPoint playerLoc = player.getWorldLocation();
+    
+    // Draw on tiles around player
+    for (int dx = -5; dx <= 5; dx++) {
+        for (int dy = -5; dy <= 5; dy++) {
+            WorldPoint tilePoint = new WorldPoint(
+                playerLoc.getX() + dx,
+                playerLoc.getY() + dy,
+                playerLoc.getPlane()
+            );
+            
+            LocalPoint localPoint = LocalPoint.fromWorld(
+                client,
+                tilePoint
+            );
+            
+            if (localPoint == null) continue;
+            
+            Polygon tilePoly = Perspective.getCanvasTilePoly(
+                client,
+                localPoint
+            );
+            
+            if (tilePoly != null) {
+                int distance = Math.abs(dx) + Math.abs(dy);
+                int alpha = Math.max(0, 255 - distance * 20);
+                graphics.setColor(new Color(255, 0, 0, alpha));
+                graphics.draw(tilePoly);
+            }
+        }
+    }
+    
+    return null;
+}
+```
+
+## Example: Click Detection
+
+```java
+public boolean isPointOnTile(WorldPoint tile, Point mousePos) {
+    LocalPoint localPoint = LocalPoint.fromWorld(client, tile);
+    if (localPoint == null) {
+        return false;
+    }
+    
+    Polygon tilePoly = Perspective.getCanvasTilePoly(client, localPoint);
+    if (tilePoly == null) {
+        return false;
+    }
+    
+    return tilePoly.contains(mousePos.getX(), mousePos.getY());
+}
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Client" icon="computer" href="/api/client">
+    Client interface
+  </Card>
+  <Card title="WorldView" icon="globe" href="/api/world">
+    WorldView and coordinates
+  </Card>
+</CardGroup>

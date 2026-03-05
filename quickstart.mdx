@@ -1,80 +1,468 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get started with RuneLite plugin development in 10 minutes
 ---
 
-## Get started in three steps
-
-Get your documentation site running locally and make your first customization.
-
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+This guide will teach you how to create your first RuneLite plugin. By the end, you'll have a working plugin that interacts with the game.
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  Before starting, make sure you've completed the [Installation guide](/installation) and can run the RuneLite client.
 </Note>
+
+## Understanding the Project Structure
+
+RuneLite is organized into several key modules:
+
+```
+runelite/
+├── cache/                      # Cache file utilities
+├── runelite-api/              # API interfaces
+│   └── src/main/java/net/runelite/api/
+│       ├── Client.java        # Main client interface
+│       ├── Player.java        # Player data
+│       ├── NPC.java          # NPC data
+│       └── events/           # Game events
+├── runelite-client/          # Client implementation
+│   └── src/main/java/net/runelite/client/
+│       ├── RuneLite.java     # Main entry point
+│       ├── plugins/          # Core plugins
+│       └── ui/               # UI components
+└── settings.gradle.kts       # Gradle project configuration
+```
+
+<Info>
+  All plugins live in `runelite-client/src/main/java/net/runelite/client/plugins/`. Each plugin typically has its own package with the plugin class, config, and overlays.
+</Info>
+
+## Create Your First Plugin
+
+Let's create a simple plugin that displays a message when your character levels up.
+
+<Steps>
+  <Step title="Create the Plugin Package">
+    Create a new package in the plugins directory:
+    
+    ```
+    runelite-client/src/main/java/net/runelite/client/plugins/levelnotifier/
+    ```
+    
+    Create two files:
+    - `LevelNotifierPlugin.java` - The main plugin class
+    - `LevelNotifierConfig.java` - Configuration interface
+  </Step>
+  
+  <Step title="Create the Plugin Class">
+    Every plugin extends the `Plugin` class and is annotated with `@PluginDescriptor`.
+    
+    Create `LevelNotifierPlugin.java`:
+    
+    ```java LevelNotifierPlugin.java
+    package net.runelite.client.plugins.levelnotifier;
+    
+    import com.google.inject.Provides;
+    import javax.inject.Inject;
+    import lombok.extern.slf4j.Slf4j;
+    import net.runelite.api.Client;
+    import net.runelite.api.Skill;
+    import net.runelite.api.events.StatChanged;
+    import net.runelite.client.Notifier;
+    import net.runelite.client.config.ConfigManager;
+    import net.runelite.client.eventbus.Subscribe;
+    import net.runelite.client.plugins.Plugin;
+    import net.runelite.client.plugins.PluginDescriptor;
+    
+    @Slf4j
+    @PluginDescriptor(
+        name = "Level Notifier",
+        description = "Sends a notification when you level up",
+        tags = {"level", "notification", "skill"}
+    )
+    public class LevelNotifierPlugin extends Plugin
+    {
+        @Inject
+        private Client client;
+    
+        @Inject
+        private Notifier notifier;
+    
+        @Inject
+        private LevelNotifierConfig config;
+    
+        private int[] previousLevels = new int[Skill.values().length];
+    
+        @Override
+        protected void startUp() throws Exception
+        {
+            log.info("Level Notifier started!");
+            // Store initial levels
+            for (Skill skill : Skill.values())
+            {
+                previousLevels[skill.ordinal()] = client.getRealSkillLevel(skill);
+            }
+        }
+    
+        @Override
+        protected void shutDown() throws Exception
+        {
+            log.info("Level Notifier stopped!");
+        }
+    
+        @Subscribe
+        public void onStatChanged(StatChanged statChanged)
+        {
+            Skill skill = statChanged.getSkill();
+            int currentLevel = client.getRealSkillLevel(skill);
+            int previousLevel = previousLevels[skill.ordinal()];
+    
+            if (currentLevel > previousLevel)
+            {
+                String message = String.format(
+                    "Congratulations! Your %s level is now %d!",
+                    skill.getName(),
+                    currentLevel
+                );
+                
+                log.info(message);
+                notifier.notify(message);
+                
+                previousLevels[skill.ordinal()] = currentLevel;
+            }
+        }
+    
+        @Provides
+        LevelNotifierConfig provideConfig(ConfigManager configManager)
+        {
+            return configManager.getConfig(LevelNotifierConfig.class);
+        }
+    }
+    ```
+    
+    <Tip>
+      The `@Slf4j` annotation from Lombok provides a logger instance. Use `log.info()`, `log.debug()`, etc. for debugging.
+    </Tip>
+  </Step>
+  
+  <Step title="Create the Configuration">
+    Plugins can have user-configurable settings through a config interface.
+    
+    Create `LevelNotifierConfig.java`:
+    
+    ```java LevelNotifierConfig.java
+    package net.runelite.client.plugins.levelnotifier;
+    
+    import net.runelite.client.config.Config;
+    import net.runelite.client.config.ConfigGroup;
+    import net.runelite.client.config.ConfigItem;
+    
+    @ConfigGroup("levelnotifier")
+    public interface LevelNotifierConfig extends Config
+    {
+        @ConfigItem(
+            keyName = "notifyAllSkills",
+            name = "Notify all skills",
+            description = "Send notifications for all skill level ups",
+            position = 0
+        )
+        default boolean notifyAllSkills()
+        {
+            return true;
+        }
+    
+        @ConfigItem(
+            keyName = "playSound",
+            name = "Play sound",
+            description = "Play a sound when leveling up",
+            position = 1
+        )
+        default boolean playSound()
+        {
+            return true;
+        }
+    }
+    ```
+  </Step>
+  
+  <Step title="Build and Test">
+    Build the project:
+    
+    ```bash
+    ./gradlew build
+    ```
+    
+    Then run the client:
+    
+    ```bash
+    ./gradlew runelite-client:run
+    ```
+    
+    Your plugin will automatically load. Check the Plugin Panel (wrench icon) to see it listed!
+  </Step>
+</Steps>
+
+## Understanding the Plugin System
+
+### Plugin Lifecycle
+
+Plugins have two main lifecycle methods:
+
+```java
+@Override
+protected void startUp() throws Exception
+{
+    // Called when the plugin is enabled
+    // Initialize resources, register overlays, etc.
+}
+
+@Override
+protected void shutDown() throws Exception
+{
+    // Called when the plugin is disabled
+    // Clean up resources, unregister overlays, etc.
+}
+```
+
+### Dependency Injection
+
+RuneLite uses Google Guice for dependency injection. Use `@Inject` to get instances:
+
+```java
+@Inject
+private Client client;  // Access game state
+
+@Inject
+private ConfigManager configManager;  // Manage configuration
+
+@Inject
+private Notifier notifier;  // Send notifications
+
+@Inject
+private OverlayManager overlayManager;  // Manage overlays
+```
+
+### Event System
+
+Subscribe to game events using `@Subscribe`:
+
+```java
+@Subscribe
+public void onGameTick(GameTick event)
+{
+    // Called every game tick (~600ms)
+    Player player = client.getLocalPlayer();
+    if (player != null)
+    {
+        WorldPoint location = player.getWorldLocation();
+        log.debug("Player at: {}", location);
+    }
+}
+
+@Subscribe
+public void onChatMessage(ChatMessage event)
+{
+    String message = event.getMessage();
+    log.info("Chat: {}", message);
+}
+
+@Subscribe
+public void onNpcSpawned(NpcSpawned event)
+{
+    NPC npc = event.getNpc();
+    log.debug("NPC spawned: {}", npc.getName());
+}
+```
+
+<Warning>
+  Event handlers should be fast. Slow handlers will cause client lag. For expensive operations, use `clientThread.invoke()` or `executorService.submit()`.
+</Warning>
+
+## Using the Client API
+
+The `Client` interface provides access to all game data. Here are common patterns:
+
+### Get Player Information
+
+```java
+Player localPlayer = client.getLocalPlayer();
+if (localPlayer != null)
+{
+    String name = localPlayer.getName();
+    int combatLevel = localPlayer.getCombatLevel();
+    WorldPoint location = localPlayer.getWorldLocation();
+    int health = client.getBoostedSkillLevel(Skill.HITPOINTS);
+    
+    log.info("Player: {} (Combat: {}) at {}", name, combatLevel, location);
+}
+```
+
+### Access Skills
+
+```java
+// Get boosted level (with potions, prayers, etc.)
+int boostedAttack = client.getBoostedSkillLevel(Skill.ATTACK);
+
+// Get real level
+int realAttack = client.getRealSkillLevel(Skill.ATTACK);
+
+// Get XP
+int attackXp = client.getSkillExperience(Skill.ATTACK);
+```
+
+### Find NPCs
+
+```java
+for (NPC npc : client.getNpcs())
+{
+    if (npc.getName() != null && npc.getName().equals("Guard"))
+    {
+        WorldPoint npcLocation = npc.getWorldLocation();
+        int npcId = npc.getId();
+        log.debug("Found Guard at {} (ID: {})", npcLocation, npcId);
+    }
+}
+```
+
+### Access Inventory
+
+```java
+import net.runelite.api.widgets.WidgetInfo;
+import net.runelite.api.widgets.Widget;
+import net.runelite.api.widgets.WidgetItem;
+
+Widget inventoryWidget = client.getWidget(WidgetInfo.INVENTORY);
+if (inventoryWidget != null)
+{
+    Collection<WidgetItem> items = inventoryWidget.getWidgetItems();
+    for (WidgetItem item : items)
+    {
+        int itemId = item.getId();
+        int quantity = item.getQuantity();
+        log.debug("Item: {} x{}", itemId, quantity);
+    }
+}
+```
+
+## Real-World Example: Agility Plugin
+
+Let's look at how the built-in Agility plugin works (simplified):
+
+```java
+@PluginDescriptor(
+    name = "Agility",
+    description = "Show helpful information about agility courses and obstacles",
+    tags = {"grace", "marks", "overlay", "shortcuts", "skilling"}
+)
+public class AgilityPlugin extends Plugin
+{
+    @Inject
+    private Client client;
+
+    @Inject
+    private OverlayManager overlayManager;
+
+    @Inject
+    private AgilityOverlay agilityOverlay;
+
+    private int lastAgilityXp;
+
+    @Override
+    protected void startUp() throws Exception
+    {
+        overlayManager.add(agilityOverlay);
+    }
+
+    @Override
+    protected void shutDown() throws Exception
+    {
+        overlayManager.remove(agilityOverlay);
+    }
+
+    @Subscribe
+    public void onStatChanged(StatChanged statChanged)
+    {
+        if (statChanged.getSkill() != Skill.AGILITY)
+        {
+            return;
+        }
+
+        int agilityXp = statChanged.getXp();
+        int xpGained = agilityXp - lastAgilityXp;
+        lastAgilityXp = agilityXp;
+
+        log.debug("Gained {} Agility XP", xpGained);
+        // Track laps, update overlays, etc.
+    }
+}
+```
+
+<Info>
+  Study the source code of existing plugins in `runelite-client/src/main/java/net/runelite/client/plugins/` for more examples!
+</Info>
+
+## Debugging Your Plugin
+
+### Using the Logger
+
+```java
+log.debug("Detailed info for debugging");
+log.info("General information");
+log.warn("Warning message");
+log.error("Error occurred", exception);
+```
+
+Enable debug logging by running with `--debug`:
+
+```bash
+./gradlew runelite-client:run --args="--debug"
+```
+
+### IntelliJ Debugger
+
+1. Set breakpoints by clicking in the gutter next to line numbers
+2. Right-click `RuneLite.java` → **Debug 'RuneLite.main()'**
+3. Execution will pause at breakpoints
+4. Use the debugger to inspect variables and step through code
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="Plugin doesn't appear in the list">
+    - Ensure `@PluginDescriptor` annotation is present
+    - Check that the plugin is in the correct package
+    - Rebuild the project: `./gradlew clean build`
+  </Accordion>
+  
+  <Accordion title="NullPointerException when accessing client">
+    - Check if you're accessing data before it's available
+    - Always null-check: `if (client.getLocalPlayer() != null)`
+    - Use `@Subscribe` methods which guarantee data availability
+  </Accordion>
+  
+  <Accordion title="Events not firing">
+    - Ensure the method has `@Subscribe` annotation
+    - Check the method signature matches the event type
+    - Verify the event is actually occurring in-game
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+Congratulations! You've created your first RuneLite plugin. Here's what to explore next:
+
+<CardGroup cols={2}>
+  <Card title="Creating Overlays" icon="layer-group" href="/plugins/overlays">
+    Draw custom graphics on the game canvas
+  </Card>
+  <Card title="Configuration Panels" icon="sliders" href="/plugins/config-management">
+    Build advanced settings interfaces
+  </Card>
+  <Card title="Event Reference" icon="bolt" href="/api/events-overview">
+    Complete list of available game events
+  </Card>
+  <Card title="Client API" icon="book" href="/api/client">
+    Full API documentation
+  </Card>
+</CardGroup>
+
+<Tip>
+  Join the RuneLite Discord at [runelite.net/discord](https://runelite.net/discord) to get help from the community!
+</Tip>

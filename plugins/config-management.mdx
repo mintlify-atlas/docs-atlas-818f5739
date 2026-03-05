@@ -1,0 +1,85 @@
+---
+title: "Configuration Management"
+description: "Add user-configurable settings to your plugins"
+---
+
+## Overview
+
+RuneLite's configuration system allows plugins to define type-safe settings that persist across sessions.
+
+## Creating Configuration
+
+```java MyPluginConfig.java
+package net.runelite.client.plugins.myplugin;
+
+import net.runelite.client.config.Config;
+import net.runelite.client.config.ConfigGroup;
+import net.runelite.client.config.ConfigItem;
+
+@ConfigGroup("myplugin")
+public interface MyPluginConfig extends Config
+{
+    @ConfigItem(
+        keyName = "showNotifications",
+        name = "Show Notifications",
+        description = "Display notifications for events"
+    )
+    default boolean showNotifications()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "threshold",
+        name = "Threshold",
+        description = "Numeric threshold value"
+    )
+    default int threshold()
+    {
+        return 100;
+    }
+}
+```
+
+## Using Configuration
+
+```java
+@Inject
+private MyPluginConfig config;
+
+@Provides
+MyPluginConfig provideConfig(ConfigManager configManager)
+{
+    return configManager.getConfig(MyPluginConfig.class);
+}
+
+public void doSomething()
+{
+    if (config.showNotifications())
+    {
+        notifier.notify("Event occurred!");
+    }
+}
+```
+
+## Configuration Types
+
+- `boolean` - Checkbox
+- `int` - Number input
+- `String` - Text input
+- `Color` - Color picker
+- `Enum` - Dropdown
+- `Button` - Action button
+
+See [Configuration Concept](/concepts/configuration) for complete details.
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Configuration Concept" icon="gear" href="/concepts/configuration">
+    Detailed configuration documentation
+  </Card>
+  <Card title="Plugin Annotations" icon="at" href="/plugins/annotations">
+    Learn about @ConfigItem and more
+  </Card>
+</CardGroup>

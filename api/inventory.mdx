@@ -1,0 +1,426 @@
+---
+title: 'ItemContainer and Inventory'
+description: 'ItemContainer interface for inventory and container management'
+---
+
+The `ItemContainer` interface represents an inventory that contains items, such as the player's inventory, bank, equipment, and more.
+
+## Getting Item Containers
+
+### By InventoryID
+
+<ParamField path="inventory" type="InventoryID" required>
+  The inventory type
+</ParamField>
+
+<ParamField path="Returns" type="ItemContainer" nullable>
+  The item container, or null if not loaded
+</ParamField>
+
+```java
+// Player inventory
+ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
+
+// Equipment
+ItemContainer equipment = client.getItemContainer(InventoryID.EQUIPMENT);
+
+// Bank
+ItemContainer bank = client.getItemContainer(InventoryID.BANK);
+
+// Other containers
+ItemContainer tradeInventory = client.getItemContainer(InventoryID.TRADE);
+ItemContainer shop = client.getItemContainer(InventoryID.SHOP_INVENTORY);
+```
+
+### By ID
+
+<ParamField path="id" type="int" required>
+  The inventory ID
+</ParamField>
+
+<ParamField path="Returns" type="ItemContainer" nullable>
+  The item container
+</ParamField>
+
+```java
+ItemContainer container = client.getItemContainer(93); // Inventory ID
+```
+
+### All Item Containers
+
+```java
+HashTable<ItemContainer> allContainers = client.getItemContainers();
+for (ItemContainer container : allContainers) {
+    int id = container.getId();
+    // Process container
+}
+```
+
+## ItemContainer Interface
+
+### getId
+
+<ParamField path="Returns" type="int">
+  The container ID
+</ParamField>
+
+Gets the item container ID.
+
+```java
+int id = container.getId();
+```
+
+### getItems
+
+<ParamField path="Returns" type="Item[]">
+  Array of all items
+</ParamField>
+
+Gets an array of all items in the container.
+
+```java
+Item[] items = container.getItems();
+for (int i = 0; i < items.length; i++) {
+    Item item = items[i];
+    if (item.getId() != -1) { // -1 = empty slot
+        int id = item.getId();
+        int quantity = item.getQuantity();
+        log.info("Slot " + i + ": " + id + " x" + quantity);
+    }
+}
+```
+
+### getItem
+
+<ParamField path="slot" type="int" required>
+  The slot index
+</ParamField>
+
+<ParamField path="Returns" type="Item" nullable>
+  The item at the slot
+</ParamField>
+
+Gets an item from a specific slot.
+
+```java
+Item item = container.getItem(0); // First slot
+if (item != null && item.getId() != -1) {
+    // Slot contains an item
+}
+```
+
+### contains
+
+<ParamField path="itemId" type="int" required>
+  The item ID to check for
+</ParamField>
+
+<ParamField path="Returns" type="boolean">
+  True if container contains the item
+</ParamField>
+
+Checks if the container contains a specific item.
+
+```java
+if (inventory.contains(ItemID.ABYSSAL_WHIP)) {
+    // Player has an abyssal whip
+}
+```
+
+### count
+
+<ParamField path="itemId" type="int" required>
+  The item ID to count
+</ParamField>
+
+<ParamField path="Returns" type="int">
+  The total quantity
+</ParamField>
+
+Counts how many of an item the container holds.
+
+```java
+int coins = inventory.count(ItemID.COINS_995);
+log.info("Player has " + coins + " coins");
+
+// Count multiple item types
+int logs = inventory.count(ItemID.LOGS) +
+           inventory.count(ItemID.OAK_LOGS) +
+           inventory.count(ItemID.WILLOW_LOGS);
+```
+
+### size
+
+<ParamField path="Returns" type="int">
+  The number of slots (including empty)
+</ParamField>
+
+Gets the total number of slots in the container.
+
+```java
+int totalSlots = inventory.size(); // Usually 28 for inventory
+```
+
+### count (no args)
+
+<ParamField path="Returns" type="int">
+  The number of filled slots
+</ParamField>
+
+Gets the total number of filled slots.
+
+```java
+int filledSlots = inventory.count();
+int emptySlots = inventory.size() - filledSlots;
+log.info("Inventory: " + filledSlots + "/" + inventory.size());
+```
+
+### find
+
+<ParamField path="itemId" type="int" required>
+  The item ID to find
+</ParamField>
+
+<ParamField path="Returns" type="int">
+  The slot index, or -1 if not found
+</ParamField>
+
+Finds the first index of an item.
+
+```java
+int slot = inventory.find(ItemID.ABYSSAL_WHIP);
+if (slot != -1) {
+    log.info("Whip is in slot " + slot);
+}
+```
+
+## Common Inventories
+
+### Player Inventory (InventoryID.INVENTORY)
+
+```java
+ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
+if (inventory != null) {
+    // 28 slots (usually)
+    int totalSlots = inventory.size();
+    int usedSlots = inventory.count();
+    int freeSlots = totalSlots - usedSlots;
+}
+```
+
+### Equipment (InventoryID.EQUIPMENT)
+
+```java
+ItemContainer equipment = client.getItemContainer(InventoryID.EQUIPMENT);
+if (equipment != null) {
+    // Equipment slots
+    Item weapon = equipment.getItem(EquipmentInventorySlot.WEAPON.getSlotIdx());
+    Item helm = equipment.getItem(EquipmentInventorySlot.HEAD.getSlotIdx());
+    Item chest = equipment.getItem(EquipmentInventorySlot.BODY.getSlotIdx());
+    Item legs = equipment.getItem(EquipmentInventorySlot.LEGS.getSlotIdx());
+    Item boots = equipment.getItem(EquipmentInventorySlot.BOOTS.getSlotIdx());
+    Item cape = equipment.getItem(EquipmentInventorySlot.CAPE.getSlotIdx());
+    Item amulet = equipment.getItem(EquipmentInventorySlot.AMULET.getSlotIdx());
+    Item ring = equipment.getItem(EquipmentInventorySlot.RING.getSlotIdx());
+    Item ammo = equipment.getItem(EquipmentInventorySlot.AMMO.getSlotIdx());
+    Item shield = equipment.getItem(EquipmentInventorySlot.SHIELD.getSlotIdx());
+    Item gloves = equipment.getItem(EquipmentInventorySlot.GLOVES.getSlotIdx());
+}
+```
+
+### Bank (InventoryID.BANK)
+
+```java
+ItemContainer bank = client.getItemContainer(InventoryID.BANK);
+if (bank != null) {
+    // Bank can have many slots (depends on bank size)
+    int bankSize = bank.size();
+    int itemCount = bank.count();
+    
+    // Find item in bank
+    int whipSlot = bank.find(ItemID.ABYSSAL_WHIP);
+    if (whipSlot != -1) {
+        Item whip = bank.getItem(whipSlot);
+        int quantity = whip.getQuantity();
+    }
+}
+```
+
+## Inventory Events
+
+### ItemContainerChanged
+
+```java
+@Subscribe
+public void onItemContainerChanged(ItemContainerChanged event) {
+    int containerId = event.getContainerId();
+    ItemContainer container = event.getItemContainer();
+    
+    if (containerId == InventoryID.INVENTORY.getId()) {
+        // Player inventory changed
+        handleInventoryChange(container);
+    }
+    else if (containerId == InventoryID.EQUIPMENT.getId()) {
+        // Equipment changed
+        handleEquipmentChange(container);
+    }
+    else if (containerId == InventoryID.BANK.getId()) {
+        // Bank changed
+        handleBankChange(container);
+    }
+}
+```
+
+## Example: Inventory Value Calculator
+
+```java
+public int calculateInventoryValue() {
+    ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
+    if (inventory == null) return 0;
+    
+    int totalValue = 0;
+    
+    for (Item item : inventory.getItems()) {
+        if (item.getId() == -1) continue;
+        
+        ItemComposition comp = client.getItemDefinition(item.getId());
+        int itemValue = comp.getPrice() * item.getQuantity();
+        totalValue += itemValue;
+    }
+    
+    return totalValue;
+}
+```
+
+## Example: Find Items
+
+```java
+public List<Item> findItems(Predicate<Item> filter) {
+    ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
+    if (inventory == null) return Collections.emptyList();
+    
+    List<Item> results = new ArrayList<>();
+    
+    for (Item item : inventory.getItems()) {
+        if (item.getId() == -1) continue;
+        if (filter.test(item)) {
+            results.add(item);
+        }
+    }
+    
+    return results;
+}
+
+// Usage:
+// Find all noted items
+List<Item> notedItems = findItems(item -> {
+    ItemComposition comp = client.getItemDefinition(item.getId());
+    return comp.getNote() == 799;
+});
+
+// Find stackable items
+List<Item> stackable = findItems(item -> {
+    ItemComposition comp = client.getItemDefinition(item.getId());
+    return comp.isStackable();
+});
+```
+
+## Example: Equipment Checker
+
+```java
+public boolean isWearingItem(int itemId) {
+    ItemContainer equipment = client.getItemContainer(InventoryID.EQUIPMENT);
+    if (equipment == null) return false;
+    
+    return equipment.contains(itemId);
+}
+
+public boolean hasFullSet(int... itemIds) {
+    ItemContainer equipment = client.getItemContainer(InventoryID.EQUIPMENT);
+    if (equipment == null) return false;
+    
+    for (int itemId : itemIds) {
+        if (!equipment.contains(itemId)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Usage:
+boolean wearingWhip = isWearingItem(ItemID.ABYSSAL_WHIP);
+
+boolean fullBandos = hasFullSet(
+    ItemID.BANDOS_CHESTPLATE,
+    ItemID.BANDOS_TASSETS,
+    ItemID.BANDOS_BOOTS
+);
+```
+
+## Example: Inventory Tracker
+
+```java
+private Map<Integer, Integer> previousInventory = new HashMap<>();
+
+@Subscribe
+public void onItemContainerChanged(ItemContainerChanged event) {
+    if (event.getContainerId() != InventoryID.INVENTORY.getId()) {
+        return;
+    }
+    
+    ItemContainer inventory = event.getItemContainer();
+    Map<Integer, Integer> currentInventory = new HashMap<>();
+    
+    // Build current inventory map
+    for (Item item : inventory.getItems()) {
+        if (item.getId() == -1) continue;
+        currentInventory.merge(item.getId(), item.getQuantity(), Integer::sum);
+    }
+    
+    // Find differences
+    for (Map.Entry<Integer, Integer> entry : currentInventory.entrySet()) {
+        int itemId = entry.getKey();
+        int newQty = entry.getValue();
+        int oldQty = previousInventory.getOrDefault(itemId, 0);
+        
+        if (newQty > oldQty) {
+            int gained = newQty - oldQty;
+            ItemComposition comp = client.getItemDefinition(itemId);
+            log.info("Gained: " + comp.getName() + " x" + gained);
+        }
+        else if (newQty < oldQty) {
+            int lost = oldQty - newQty;
+            ItemComposition comp = client.getItemDefinition(itemId);
+            log.info("Lost: " + comp.getName() + " x" + lost);
+        }
+    }
+    
+    // Check for removed items
+    for (Map.Entry<Integer, Integer> entry : previousInventory.entrySet()) {
+        int itemId = entry.getKey();
+        if (!currentInventory.containsKey(itemId)) {
+            ItemComposition comp = client.getItemDefinition(itemId);
+            log.info("Removed: " + comp.getName() + " x" + entry.getValue());
+        }
+    }
+    
+    previousInventory = currentInventory;
+}
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Items" icon="gem" href="/api/items">
+    Item and ItemComposition
+  </Card>
+  <Card title="Client" icon="computer" href="/api/client">
+    Client interface
+  </Card>
+  <Card title="Events" icon="bolt" href="/api/event-types">
+    Inventory events
+  </Card>
+  <Card title="Constants" icon="hashtag" href="/api/constants">
+    InventoryID constants
+  </Card>
+</CardGroup>

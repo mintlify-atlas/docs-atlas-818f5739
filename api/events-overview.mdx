@@ -1,0 +1,279 @@
+---
+title: 'Events Overview'
+description: 'Overview of the RuneLite event system for plugin development'
+---
+
+The RuneLite event system allows plugins to react to game events using the `@Subscribe` annotation.
+
+## Event Basics
+
+### Subscribing to Events
+
+Use the `@Subscribe` annotation to mark methods that should receive events:
+
+```java
+public class MyPlugin extends Plugin {
+    @Subscribe
+    public void onGameTick(GameTick event) {
+        // Called every game tick (~600ms)
+    }
+    
+    @Subscribe
+    public void onGameStateChanged(GameStateChanged event) {
+        // Called when game state changes
+        if (event.getGameState() == GameState.LOGGED_IN) {
+            log.info("Player logged in");
+        }
+    }
+}
+```
+
+### Event Method Rules
+
+- Must be public
+- Must have `@Subscribe` annotation
+- Must take exactly one parameter (the event type)
+- Return type is ignored (typically void)
+
+```java
+// Correct
+@Subscribe
+public void onChatMessage(ChatMessage event) { }
+
+// Wrong - missing @Subscribe
+public void onChatMessage(ChatMessage event) { }
+
+// Wrong - no parameters
+@Subscribe
+public void onChatMessage() { }
+
+// Wrong - multiple parameters
+@Subscribe
+public void onChatMessage(ChatMessage event, String extra) { }
+```
+
+## Common Event Categories
+
+### Game State Events
+
+- `GameStateChanged` - Game state transitions
+- `GameTick` - Every game tick (~600ms)
+- `ClientTick` - Every client tick (~20ms)
+
+### Player Events
+
+- `PlayerSpawned` - Player enters view
+- `PlayerDespawned` - Player leaves view
+- `AnimationChanged` - Player/NPC animation changes
+- `ActorDeath` - Actor dies
+
+### NPC Events
+
+- `NpcSpawned` - NPC spawns
+- `NpcDespawned` - NPC despawns
+- `NpcChanged` - NPC transforms
+
+### Object Events
+
+- `GameObjectSpawned` - Object appears
+- `GameObjectDespawned` - Object disappears
+- `GameObjectChanged` - Object changes
+- `WallObjectSpawned` / `WallObjectDespawned`
+- `DecorativeObjectSpawned` / `DecorativeObjectDespawned`
+- `GroundObjectSpawned` / `GroundObjectDespawned`
+
+### Item Events
+
+- `ItemContainerChanged` - Inventory/bank changes
+- `ItemSpawned` - Ground item appears
+- `ItemDespawned` - Ground item disappears
+- `ItemQuantityChanged` - Item stack quantity changes
+
+### UI Events
+
+- `WidgetLoaded` - Interface loaded
+- `WidgetClosed` - Interface closed
+- `MenuOpened` - Right-click menu opened
+- `MenuOptionClicked` - Menu option clicked
+
+### Chat Events
+
+- `ChatMessage` - Chat message received
+- `OverheadTextChanged` - Overhead text appears
+
+## Event Timing
+
+### GameTick
+
+Occurs approximately every 600ms (0.6 seconds). This is the server game tick.
+
+```java
+private int tickCounter = 0;
+
+@Subscribe
+public void onGameTick(GameTick event) {
+    tickCounter++;
+    
+    // Actions that don't need to run every frame
+    if (tickCounter % 10 == 0) {
+        // Every 10 ticks (6 seconds)
+        performPeriodicCheck();
+    }
+}
+```
+
+### ClientTick
+
+Occurs approximately every 20ms. Much more frequent than GameTick.
+
+```java
+@Subscribe
+public void onClientTick(ClientTick event) {
+    // Called ~50 times per second
+    // Use for time-sensitive updates
+}
+```
+
+<Warning>
+  Avoid expensive operations in `ClientTick` as it's called very frequently.
+</Warning>
+
+## Event Order
+
+Events are typically processed in the order they're posted. Multiple plugins can subscribe to the same event.
+
+```java
+// Plugin A
+@Subscribe
+public void onGameTick(GameTick event) {
+    log.info("Plugin A tick");
+}
+
+// Plugin B
+@Subscribe
+public void onGameTick(GameTick event) {
+    log.info("Plugin B tick");
+}
+
+// Both will be called, but order is not guaranteed
+```
+
+## Event Consumption
+
+Some events can be consumed to prevent further processing:
+
+```java
+@Subscribe
+public void onMenuOptionClicked(MenuOptionClicked event) {
+    if (shouldBlock(event)) {
+        event.consume(); // Prevent this menu action
+    }
+}
+```
+
+## Example: Multi-Event Plugin
+
+```java
+public class TrackerPlugin extends Plugin {
+    private int gameTicksLoggedIn = 0;
+    private final Set<Integer> seenNpcs = new HashSet<>();
+    
+    @Subscribe
+    public void onGameStateChanged(GameStateChanged event) {
+        if (event.getGameState() == GameState.LOGGED_IN) {
+            log.info("Logged in - starting tracking");
+            gameTicksLoggedIn = 0;
+            seenNpcs.clear();
+        }
+        else if (event.getGameState() == GameState.LOGIN_SCREEN) {
+            log.info("Logged out after " + gameTicksLoggedIn + " ticks");
+        }
+    }
+    
+    @Subscribe
+    public void onGameTick(GameTick event) {
+        if (client.getGameState() != GameState.LOGGED_IN) {
+            return;
+        }
+        gameTicksLoggedIn++;
+    }
+    
+    @Subscribe
+    public void onNpcSpawned(NpcSpawned event) {
+        NPC npc = event.getNpc();
+        int id = npc.getId();
+        
+        if (!seenNpcs.contains(id)) {
+            seenNpcs.add(id);
+            String name = npc.getName();
+            log.info("First time seeing NPC: " + name + " (" + id + ")");
+        }
+    }
+    
+    @Subscribe
+    public void onChatMessage(ChatMessage event) {
+        if (event.getType() == ChatMessageType.GAMEMESSAGE) {
+            String message = event.getMessage();
+            if (message.contains("level")) {
+                log.info("Level up message: " + message);
+            }
+        }
+    }
+}
+```
+
+## Performance Tips
+
+### 1. Check Game State
+
+```java
+@Subscribe
+public void onGameTick(GameTick event) {
+    if (client.getGameState() != GameState.LOGGED_IN) {
+        return; // Don't process if not logged in
+    }
+    // ... plugin logic
+}
+```
+
+### 2. Avoid Expensive Operations
+
+```java
+@Subscribe
+public void onClientTick(ClientTick event) {
+    // BAD: Expensive operation on every client tick
+    scanAllNpcs();
+    
+    // GOOD: Use GameTick for less frequent checks
+}
+
+@Subscribe
+public void onGameTick(GameTick event) {
+    // Better: Called ~50x less often
+    scanAllNpcs();
+}
+```
+
+### 3. Cache Expensive Lookups
+
+```java
+private final Map<Integer, ItemComposition> itemCache = new HashMap<>();
+
+private ItemComposition getItemComposition(int itemId) {
+    return itemCache.computeIfAbsent(itemId, client::getItemDefinition);
+}
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Event Types" icon="list" href="/api/event-types">
+    Common event types
+  </Card>
+  <Card title="Event Handling" icon="code" href="/api/event-handling">
+    Event handling patterns
+  </Card>
+  <Card title="GameState" icon="circle-dot" href="/api/game-state">
+    Game state management
+  </Card>
+</CardGroup>

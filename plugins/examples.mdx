@@ -1,0 +1,121 @@
+---
+title: "Plugin Examples"
+description: "Real-world plugin examples from the RuneLite codebase"
+---
+
+## Overview
+
+Learn from real RuneLite plugins that demonstrate common patterns and best practices.
+
+## Simple Overlay: XP Tracker
+
+The XP Tracker plugin shows experience gains and tracks progress toward level goals.
+
+```java
+@PluginDescriptor(
+    name = "XP Tracker",
+    description = "Track experience and level progress"
+)
+public class XpTrackerPlugin extends Plugin
+{
+    @Inject
+    private Client client;
+
+    @Inject
+    private OverlayManager overlayManager;
+
+    @Inject
+    private XpTrackerOverlay overlay;
+
+    @Override
+    protected void startUp()
+    {
+        overlayManager.add(overlay);
+    }
+
+    @Override
+    protected void shutDown()
+    {
+        overlayManager.remove(overlay);
+    }
+
+    @Subscribe
+    public void onStatChanged(StatChanged event)
+    {
+        // Track XP changes
+        int xp = event.getXp();
+        log.debug("Stat changed: {} = {}", event.getSkill(), xp);
+    }
+}
+```
+
+## Event-Driven: Chat Commands
+
+```java
+@Subscribe
+public void onChatMessage(ChatMessage event)
+{
+    if (event.getType() != ChatMessageType.GAMEMESSAGE)
+    {
+        return;
+    }
+
+    String message = event.getMessage();
+    if (message.contains("You have completed"))
+    {
+        notifier.notify("Quest completed!");
+    }
+}
+```
+
+## Configuration: Agility Plugin
+
+```java
+@ConfigItem(
+    keyName = "showLapCount",
+    name = "Show Lap Count",
+    description = "Display number of laps completed"
+)
+default boolean showLapCount()
+{
+    return true;
+}
+
+@ConfigItem(
+    keyName = "highlightObstacles",
+    name = "Highlight Obstacles",
+    description = "Highlight clickable obstacles"
+)
+default boolean highlightObstacles()
+{
+    return true;
+}
+```
+
+## Real Plugin Reference
+
+<CardGroup cols={2}>
+  <Card title="Agility Plugin" icon="person-running" href="https://github.com/runelite/runelite/tree/master/runelite-client/src/main/java/net/runelite/client/plugins/agility">
+    Obstacle highlighting and lap tracking
+  </Card>
+  <Card title="Bank Plugin" icon="building-columns" href="https://github.com/runelite/runelite/tree/master/runelite-client/src/main/java/net/runelite/client/plugins/bank">
+    Bank value calculation and search
+  </Card>
+  <Card title="Clue Scrolls" icon="scroll" href="https://github.com/runelite/runelite/tree/master/runelite-client/src/main/java/net/runelite/client/plugins/cluescrolls">
+    Complex puzzle solving and map detection
+  </Card>
+  <Card title="Ground Items" icon="gem" href="https://github.com/runelite/runelite/tree/master/runelite-client/src/main/java/net/runelite/client/plugins/grounditems">
+    Item tracking with value display
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Creating Plugins" icon="plus" href="/plugins/creating-plugins">
+    Build your first plugin
+  </Card>
+  <Card title="Best Practices" icon="star" href="/plugins/best-practices">
+    Follow plugin guidelines
+  </Card>
+</CardGroup>

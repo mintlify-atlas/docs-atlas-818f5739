@@ -1,0 +1,186 @@
+---
+title: "Best Practices"
+description: "Guidelines for developing high-quality RuneLite plugins"
+---
+
+## Code Quality
+
+### Use Dependency Injection
+
+```java
+// GOOD: Inject dependencies
+@Inject
+private Client client;
+
+@Inject
+private ConfigManager configManager;
+
+// BAD: Static access or manual instantiation
+private Client client = RuneLite.getInjector().getInstance(Client.class);
+```
+
+### Handle Null Values
+
+```java
+// Always check for null
+Player player = client.getLocalPlayer();
+if (player == null)
+{
+    return;
+}
+
+NPCComposition comp = npc.getComposition();
+if (comp == null)
+{
+    return;
+}
+```
+
+### Clean Up Resources
+
+```java
+@Override
+protected void shutDown()
+{
+    // Remove all overlays
+    overlayManager.remove(overlay);
+    
+    // Unregister listeners
+    keyManager.unregisterKeyListener(listener);
+    
+    // Clear collections
+    cache.clear();
+}
+```
+
+## Performance
+
+### Use Events Over Polling
+
+```java
+// GOOD: Event-driven
+@Subscribe
+public void onStatChanged(StatChanged event)
+{
+    handleLevelUp(event.getSkill());
+}
+
+// BAD: Polling
+@Subscribe
+public void onGameTick(GameTick event)
+{
+    int currentLevel = client.getRealSkillLevel(Skill.ATTACK);
+    if (currentLevel > lastLevel)
+    {
+        handleLevelUp(Skill.ATTACK);
+    }
+}
+```
+
+### Cache Expensive Operations
+
+```java
+private final Map<Integer, ItemComposition> cache = new HashMap<>();
+
+public ItemComposition getItem(int id)
+{
+    return cache.computeIfAbsent(id, 
+        itemManager::getItemComposition);
+}
+```
+
+## User Experience
+
+### Provide Clear Configuration
+
+```java
+@ConfigItem(
+    keyName = "threshold",
+    name = "Alert Threshold",
+    description = "Show alert when value exceeds this number"
+)
+default int threshold()
+{
+    return 100000;
+}
+```
+
+### Add Helpful Tags
+
+```java
+@PluginDescriptor(
+    name = "Boss Timers",
+    description = "Track boss respawn timers",
+    tags = {"boss", "timer", "pvm", "respawn", "tracking"}
+)
+```
+
+## Security
+
+### Don't Log Sensitive Data
+
+```java
+// BAD: Logs player credentials
+log.info("Player: {}, Password: {}", username, password);
+
+// GOOD: Log only necessary info
+log.info("Player logged in: {}", username);
+```
+
+### Validate User Input
+
+```java
+@ConfigItem(
+    keyName = "timeout",
+    name = "Timeout (seconds)",
+    description = "Timeout duration"
+)
+@Range(min = 1, max = 300)
+default int timeout()
+{
+    return 60;
+}
+```
+
+## Testing
+
+### Test Edge Cases
+
+- Plugin enable/disable
+- Login/logout transitions
+- World hopping
+- Null game objects
+- Empty inventories
+
+### Use Debug Logging
+
+```java
+@Override
+protected void startUp()
+{
+    log.debug("Plugin starting with config: {}", config);
+}
+
+@Subscribe
+public void onEvent(SomeEvent event)
+{
+    log.debug("Event received: {}", event);
+}
+```
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="Creating Plugins" icon="plus" href="/plugins/creating-plugins">
+    Get started with plugin development
+  </Card>
+  <Card title="Plugin Lifecycle" icon="arrows-rotate" href="/plugins/plugin-lifecycle">
+    Understand the plugin lifecycle
+  </Card>
+  <Card title="Using the API" icon="code" href="/plugins/using-the-api">
+    Learn the Client API
+  </Card>
+  <Card title="Examples" icon="book" href="/plugins/examples">
+    See real plugin code
+  </Card>
+</CardGroup>

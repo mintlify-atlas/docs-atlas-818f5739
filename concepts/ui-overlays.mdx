@@ -1,0 +1,767 @@
+---
+title: 'UI Overlay System'
+description: 'Creating and managing custom UI overlays in RuneLite'
+---
+
+## Overview
+
+RuneLite's overlay system allows plugins to render custom UI elements on top of the game. Overlays can display information, highlight game objects, or provide interactive controls. The `OverlayManager` handles overlay lifecycle and rendering.
+
+## Overlay Architecture
+
+### Overlay Base Class
+
+All overlays extend the `Overlay` abstract class:
+
+```java Overlay.java:46-104
+@Getter
+@Setter
+public abstract class Overlay implements LayoutableRenderableEntity
+{
+    public static final float PRIORITY_LOW = 0f;
+    public static final float PRIORITY_DEFAULT = 0.25f;
+    public static final float PRIORITY_MED = 0.5f;
+    public static final float PRIORITY_HIGH = 0.75f;
+    public static final float PRIORITY_HIGHEST = 1f;
+    
+    @Nullable
+    private final Plugin plugin;
+    private Point preferredLocation;
+    private Dimension preferredSize;
+    private OverlayPosition preferredPosition;
+    private Rectangle bounds = new Rectangle();
+    private OverlayPosition position = OverlayPosition.TOP_LEFT;
+    private float priority = PRIORITY_DEFAULT;
+    private OverlayLayer layer = OverlayLayer.UNDER_WIDGETS;
+    private final List<Integer> drawHooks = new ArrayList<>();
+    private final List<OverlayMenuEntry> menuEntries = new ArrayList<>();
+    private boolean resizable;
+    private int minimumSize = 32;
+    private boolean resettable = true;
+    private boolean dragTargetable;
+    private boolean movable = true;
+    private boolean snappable = true;
+    
+    protected Overlay(@Nullable Plugin plugin)
+    {
+        this.plugin = plugin;
+    }
+}
+```
+
+## Creating an Overlay
+
+### Basic Overlay
+
+Create a simple text overlay:
+
+```java
+import net.runelite.client.ui.overlay.Overlay;
+import net.runelite.client.ui.overlay.OverlayPosition;
+import java.awt.Dimension;
+import java.awt.Graphics2D;
+import javax.inject.Inject;
+
+public class ExampleOverlay extends Overlay
+{
+    private final Client client;
+    private final ExamplePlugin plugin;
+    
+    @Inject
+    private ExampleOverlay(Client client, ExamplePlugin plugin)
+    {
+        super(plugin);
+        this.client = client;
+        this.plugin = plugin;
+        setPosition(OverlayPosition.TOP_LEFT);
+    }
+    
+    @Override
+    public Dimension render(Graphics2D graphics)
+    {
+        String text = "Example Overlay";
+        graphics.drawString(text, 0, graphics.getFontMetrics().getHeight());
+        return null;
+    }
+}
+```
+
+### Registering Overlays
+
+Register overlays in your plugin's `startUp()` method:
+
+```java
+public class ExamplePlugin extends Plugin
+{
+    @Inject
+    private OverlayManager overlayManager;
+    
+    @Inject
+    private ExampleOverlay overlay;
+    
+    @Override
+    protected void startUp()
+    {
+        overlayManager.add(overlay);
+    }
+    
+    @Override
+    protected void shutDown()
+    {
+        overlayManager.remove(overlay);
+    }
+}
+```
+
+<Warning>
+  Always remove overlays in `shutDown()` to prevent memory leaks and rendering issues.
+</Warning>
+
+## Overlay Positions
+
+Overlays can be positioned in different screen locations:
+
+```java
+public enum OverlayPosition
+{
+    TOP_LEFT,
+    TOP_CENTER,
+    TOP_RIGHT,
+    BOTTOM_LEFT,
+    BOTTOM_CENTER,
+    BOTTOM_RIGHT,
+    DYNAMIC,      // Positioned dynamically (e.g., above NPCs)
+    DETACHED,     // Freely movable
+    TOOLTIP,      // At mouse cursor
+    CANVAS_TOP_RIGHT,
+    ABOVE_CHATBOX_RIGHT
+}
+```
+
+Example:
+
+```java
+setPosition(OverlayPosition.TOP_LEFT);     // Top-left corner
+setPosition(OverlayPosition.DYNAMIC);       // Dynamic positioning
+setPosition(OverlayPosition.TOOLTIP);       // Follow mouse cursor
+```
+
+<Note>
+  Users can move overlays by holding Alt and dragging them. Set `setMovable(false)` to prevent this.
+</Note>
+
+## Overlay Layers
+
+Overlays render at different z-order layers:
+
+```java
+public enum OverlayLayer
+{
+    UNDER_WIDGETS,    // Below game interfaces
+    ABOVE_WIDGETS,    // Above game interfaces
+    ABOVE_SCENE,      // After 3D scene, before widgets
+    ALWAYS_ON_TOP,    // Above everything
+    MANUAL            // Custom draw hooks
+}
+```
+
+Example:
+
+```java
+setLayer(OverlayLayer.ABOVE_WIDGETS);   // Draw above game UI
+setLayer(OverlayLayer.ABOVE_SCENE);     // Draw over 3D scene
+```
+
+## Overlay Priority
+
+Control render order with priority:
+
+```java
+setPriority(Overlay.PRIORITY_HIGH);     // Render later (on top)
+setPriority(Overlay.PRIORITY_LOW);      // Render earlier (below)
+setPriority(0.75f);                     // Custom priority
+```
+
+<Info>
+  For `DYNAMIC` overlays, higher priority renders later (on top). For positioned overlays, higher priority renders earlier (closer to preferred position).
+</Info>
+
+## OverlayPanel
+
+Use `OverlayPanel` for styled panel overlays:
+
+```java
+import net.runelite.client.ui.overlay.OverlayPanel;
+import net.runelite.client.ui.overlay.components.TitleComponent;
+import net.runelite.client.ui.overlay.components.LineComponent;
+
+public class ExampleOverlayPanel extends OverlayPanel
+{
+    private final ExamplePlugin plugin;
+    
+    @Inject
+    private ExampleOverlayPanel(ExamplePlugin plugin)
+    {
+        super(plugin);
+        this.plugin = plugin;
+    }
+    
+    @Override
+    public Dimension render(Graphics2D graphics)
+    {
+        panelComponent.getChildren().clear();
+        
+        // Add title
+        panelComponent.getChildren().add(TitleComponent.builder()
+            .text("Example Panel")
+            .color(Color.GREEN)
+            .build());
+        
+        // Add line
+        panelComponent.getChildren().add(LineComponent.builder()
+            .left("Status:")
+            .right("Active")
+            .build());
+        
+        return super.render(graphics);
+    }
+}
+```
+
+<Note>
+  `OverlayPanel` automatically handles background rendering, borders, and positioning. Use it for simple information panels.
+</Note>
+
+## Overlay Components
+
+RuneLite provides pre-built components for common UI patterns:
+
+### TitleComponent
+
+```java
+TitleComponent.builder()
+    .text("My Title")
+    .color(Color.YELLOW)
+    .build()
+```
+
+### LineComponent
+
+```java
+LineComponent.builder()
+    .left("Label:")
+    .right("Value")
+    .leftColor(Color.WHITE)
+    .rightColor(Color.GREEN)
+    .build()
+```
+
+### ProgressBarComponent
+
+```java
+ProgressBarComponent.builder()
+    .minimum(0)
+    .maximum(100)
+    .value(currentValue)
+    .labelDisplayMode(ProgressBarComponent.LabelDisplayMode.PERCENTAGE)
+    .build()
+```
+
+### TableComponent
+
+```java
+TableComponent tableComponent = new TableComponent();
+tableComponent.setColumnAlignments(
+    TableAlignment.LEFT,
+    TableAlignment.RIGHT
+);
+tableComponent.addRow("Item", "Quantity");
+tableComponent.addRow("Gold", "1000");
+```
+
+### ImageComponent
+
+```java
+BufferedImage image = ImageUtil.loadImageResource(getClass(), "icon.png");
+ImageComponent.builder()
+    .image(image)
+    .build()
+```
+
+## Dynamic Overlays
+
+Dynamic overlays render at specific world positions:
+
+```java
+import net.runelite.api.Point;
+import net.runelite.api.coords.LocalPoint;
+import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.Perspective;
+
+public class NPCOverlay extends Overlay
+{
+    private final Client client;
+    private final ExamplePlugin plugin;
+    
+    @Inject
+    private NPCOverlay(Client client, ExamplePlugin plugin)
+    {
+        super(plugin);
+        this.client = client;
+        this.plugin = plugin;
+        setPosition(OverlayPosition.DYNAMIC);
+        setLayer(OverlayLayer.ABOVE_SCENE);
+    }
+    
+    @Override
+    public Dimension render(Graphics2D graphics)
+    {
+        for (NPC npc : client.getNpcs())
+        {
+            if (npc.getName() != null && npc.getName().equals("Goblin"))
+            {
+                renderNpcOverlay(graphics, npc);
+            }
+        }
+        return null;
+    }
+    
+    private void renderNpcOverlay(Graphics2D graphics, NPC npc)
+    {
+        Point canvasPoint = npc.getCanvasTextLocation(graphics, "Target", 0);
+        if (canvasPoint != null)
+        {
+            graphics.setColor(Color.RED);
+            graphics.drawString("Target", canvasPoint.getX(), canvasPoint.getY());
+        }
+        
+        // Draw tile overlay
+        LocalPoint localPoint = npc.getLocalLocation();
+        if (localPoint != null)
+        {
+            Polygon poly = Perspective.getCanvasTilePoly(client, localPoint);
+            if (poly != null)
+            {
+                graphics.setColor(new Color(255, 0, 0, 100));
+                graphics.fill(poly);
+                graphics.setColor(Color.RED);
+                graphics.draw(poly);
+            }
+        }
+    }
+}
+```
+
+## Overlay Manager
+
+The `OverlayManager` provides overlay lifecycle management:
+
+```java OverlayManager.java:57-114
+@Singleton
+@Slf4j
+public class OverlayManager
+{
+    private final List<Overlay> overlays = new ArrayList<>();
+    private Collection<WidgetItem> widgetItems = Collections.emptyList();
+    private ArrayListMultimap<Object, Overlay> overlayMap = ArrayListMultimap.create();
+    
+    private final ConfigManager configManager;
+    private final RuneLiteConfig runeLiteConfig;
+    
+    @Inject
+    private OverlayManager(final ConfigManager configManager, final RuneLiteConfig runeLiteConfig)
+    {
+        this.configManager = configManager;
+        this.runeLiteConfig = runeLiteConfig;
+    }
+}
+```
+
+### Adding Overlays
+
+```java OverlayManager.java:168-189
+public synchronized boolean add(final Overlay overlay)
+{
+    if (overlays.contains(overlay)) {
+        return false;
+    }
+    
+    overlays.add(overlay);
+    loadOverlay(overlay);
+    updateOverlayConfig(overlay);
+    
+    if (overlay instanceof WidgetItemOverlay) {
+        ((WidgetItemOverlay) overlay).setOverlayManager(this);
+    }
+    
+    rebuildOverlayLayers();
+    return true;
+}
+```
+
+### Removing Overlays
+
+```java OverlayManager.java:197-207
+public synchronized boolean remove(final Overlay overlay)
+{
+    final boolean remove = overlays.remove(overlay);
+    
+    if (remove) {
+        rebuildOverlayLayers();
+    }
+    
+    return remove;
+}
+```
+
+### Saving and Resetting
+
+```java
+// Save overlay position and size
+overlayManager.saveOverlay(overlay);
+
+// Reset to defaults
+overlayManager.resetOverlay(overlay);
+```
+
+## Overlay Persistence
+
+Overlay positions and sizes are automatically saved:
+
+```java OverlayManager.java:252-258
+public synchronized void saveOverlay(final Overlay overlay)
+{
+    saveOverlayPosition(overlay);
+    saveOverlaySize(overlay);
+    saveOverlayLocation(overlay);
+    rebuildOverlayLayers();
+}
+```
+
+Configuration keys:
+```
+runelite.ExampleOverlay_preferredLocation=100:200
+runelite.ExampleOverlay_preferredSize=300x150
+runelite.ExampleOverlay_preferredPosition=TOP_LEFT
+```
+
+<Info>
+  Overlay configuration is stored per-profile and synced if cloud sync is enabled.
+</Info>
+
+## Overlay Menu Entries
+
+Add custom menu entries to overlays:
+
+```java
+public class ExampleOverlay extends Overlay
+{
+    @Inject
+    private ExampleOverlay(ExamplePlugin plugin)
+    {
+        super(plugin);
+        
+        // Add custom menu entry
+        addMenuEntry(
+            MenuAction.RUNELITE_OVERLAY,
+            "Toggle mode",
+            getName(),
+            e -> toggleMode()
+        );
+    }
+    
+    private void toggleMode()
+    {
+        // Handle menu click
+    }
+}
+```
+
+## Conditional Rendering
+
+Only render when needed:
+
+```java
+@Override
+public Dimension render(Graphics2D graphics)
+{
+    // Don't render when not logged in
+    if (client.getGameState() != GameState.LOGGED_IN)
+    {
+        return null;
+    }
+    
+    // Don't render if plugin disabled
+    if (!plugin.isEnabled())
+    {
+        return null;
+    }
+    
+    // Render overlay
+    renderOverlay(graphics);
+    return null;
+}
+```
+
+<Note>
+  Returning `null` from `render()` means the overlay has no fixed size. Return a `Dimension` for fixed-size overlays.
+</Note>
+
+## Tooltip Overlays
+
+Create overlays that follow the mouse:
+
+```java
+public class TooltipOverlay extends Overlay
+{
+    @Inject
+    private TooltipOverlay(ExamplePlugin plugin)
+    {
+        super(plugin);
+        setPosition(OverlayPosition.TOOLTIP);
+        setPriority(Overlay.PRIORITY_HIGHEST);
+    }
+    
+    @Override
+    public Dimension render(Graphics2D graphics)
+    {
+        String tooltipText = plugin.getTooltipText();
+        if (tooltipText == null)
+        {
+            return null;
+        }
+        
+        FontMetrics fm = graphics.getFontMetrics();
+        int width = fm.stringWidth(tooltipText) + 10;
+        int height = fm.getHeight() + 10;
+        
+        // Draw background
+        graphics.setColor(new Color(0, 0, 0, 200));
+        graphics.fillRect(0, 0, width, height);
+        
+        // Draw text
+        graphics.setColor(Color.WHITE);
+        graphics.drawString(tooltipText, 5, fm.getHeight());
+        
+        return new Dimension(width, height);
+    }
+}
+```
+
+## Widget Item Overlays
+
+Highlight or render over inventory/equipment items:
+
+```java
+import net.runelite.client.ui.overlay.WidgetItemOverlay;
+import net.runelite.api.widgets.WidgetItem;
+
+public class InventoryOverlay extends WidgetItemOverlay
+{
+    private final ExamplePlugin plugin;
+    
+    @Inject
+    private InventoryOverlay(ExamplePlugin plugin)
+    {
+        this.plugin = plugin;
+        showOnInventory();
+        showOnEquipment();
+    }
+    
+    @Override
+    public void renderItemOverlay(Graphics2D graphics, int itemId, WidgetItem widgetItem)
+    {
+        if (plugin.shouldHighlight(itemId))
+        {
+            Rectangle bounds = widgetItem.getCanvasBounds();
+            graphics.setColor(new Color(0, 255, 0, 100));
+            graphics.fill(bounds);
+        }
+    }
+}
+```
+
+## Custom Draw Hooks
+
+Render after specific interfaces or layers:
+
+```java
+import net.runelite.api.widgets.WidgetID;
+
+public class CustomOverlay extends Overlay
+{
+    @Inject
+    private CustomOverlay(ExamplePlugin plugin)
+    {
+        super(plugin);
+        setLayer(OverlayLayer.MANUAL);
+        
+        // Draw after chatbox interface
+        drawAfterInterface(WidgetID.CHATBOX_GROUP_ID);
+        
+        // Draw after specific layer
+        drawAfterLayer(WidgetID.BANK_GROUP_ID, 0);
+    }
+}
+```
+
+<Warning>
+  When using `MANUAL` layer with draw hooks, the overlay won't render during the normal layer passes. It only renders at the specified hook points.
+</Warning>
+
+## Advanced Graphics
+
+### Anti-aliasing
+
+```java
+graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, 
+    RenderingHints.VALUE_ANTIALIAS_ON);
+```
+
+### Transparency
+
+```java
+Composite originalComposite = graphics.getComposite();
+graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 0.5f));
+// Draw transparent elements
+graphics.setComposite(originalComposite);
+```
+
+### Clipping
+
+```java
+Shape originalClip = graphics.getClip();
+graphics.setClip(new Rectangle(x, y, width, height));
+// Draw clipped content
+graphics.setClip(originalClip);
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Keep render() Fast">
+    The `render()` method is called every frame (~50 times per second). Avoid expensive operations:
+    
+    ```java
+    // Bad: Expensive calculation every frame
+    public Dimension render(Graphics2D graphics) {
+        List<NPC> targets = findAllTargets(); // Slow!
+        // ...
+    }
+    
+    // Good: Cache results
+    private List<NPC> cachedTargets = new ArrayList<>();
+    
+    @Subscribe
+    public void onGameTick(GameTick event) {
+        cachedTargets = findAllTargets();
+    }
+    
+    public Dimension render(Graphics2D graphics) {
+        for (NPC npc : cachedTargets) {
+            // ...
+        }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Check Game State">
+    Always verify the game state before rendering:
+    
+    ```java
+    if (client.getGameState() != GameState.LOGGED_IN) {
+        return null;
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Clean Up Resources">
+    Remove overlays in `shutDown()` and clean up any graphics resources:
+    
+    ```java
+    @Override
+    protected void shutDown() {
+        overlayManager.remove(overlay);
+        // Clean up images, etc.
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Use Appropriate Layers">
+    Choose the correct layer for your overlay:
+    - `ABOVE_SCENE` for world overlays
+    - `UNDER_WIDGETS` for background info
+    - `ABOVE_WIDGETS` for prominent displays
+  </Accordion>
+  
+  <Accordion title="Handle Null Values">
+    Game state can be incomplete. Always null-check:
+    
+    ```java
+    Player player = client.getLocalPlayer();
+    if (player == null) {
+        return null;
+    }
+    
+    String name = player.getName();
+    if (name == null) {
+        return null;
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Performance Tips
+
+<Steps>
+  <Step title="Cache Expensive Calculations">
+    Calculate complex values on game ticks, not every frame
+  </Step>
+  
+  <Step title="Limit Text Rendering">
+    Text rendering is expensive. Pre-calculate dimensions when possible
+  </Step>
+  
+  <Step title="Use Dirty Flags">
+    Only recompute when data changes:
+    
+    ```java
+    private boolean dirty = true;
+    private String cachedText;
+    
+    @Subscribe
+    public void onConfigChanged(ConfigChanged event) {
+        dirty = true;
+    }
+    
+    public Dimension render(Graphics2D graphics) {
+        if (dirty) {
+            cachedText = computeText();
+            dirty = false;
+        }
+        graphics.drawString(cachedText, 0, 10);
+    }
+    ```
+  </Step>
+  
+  <Step title="Avoid Creating Objects">
+    Don't create new objects every frame - reuse them
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Overlay Examples" href="/examples/overlays" icon="code">
+    See complete overlay examples
+  </Card>
+  <Card title="Graphics Utilities" href="/api/graphics" icon="paint-brush">
+    Learn about graphics helper methods
+  </Card>
+  <Card title="Perspective API" href="/api/perspective" icon="cube">
+    Convert world coordinates to screen space
+  </Card>
+  <Card title="Creating Overlays" href="/plugins/overlays" icon="hammer">
+    Create custom overlays in your plugins
+  </Card>
+</CardGroup>

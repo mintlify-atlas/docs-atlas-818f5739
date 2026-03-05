@@ -1,0 +1,550 @@
+---
+title: "Plugin Annotations"
+description: "Understanding RuneLite plugin annotations and decorators"
+---
+
+## Overview
+
+RuneLite uses annotations to define plugin metadata, inject dependencies, subscribe to events, and schedule tasks. Understanding these annotations is essential for plugin development.
+
+## @PluginDescriptor
+
+The `@PluginDescriptor` annotation is required on every plugin class.
+
+```java
+import net.runelite.client.plugins.PluginDescriptor;
+
+@PluginDescriptor(
+    name = "My Plugin",
+    description = "Plugin description",
+    tags = {"tag1", "tag2"},
+    enabledByDefault = false,
+    conflicts = "Conflicting Plugin",
+    loadWhenOutdated = false,
+    hidden = false
+)
+public class MyPlugin extends Plugin
+{
+    // ...
+}
+```
+
+### Parameters
+
+<ParamField path="name" type="String" required>
+  Display name shown in the plugin panel
+</ParamField>
+
+<ParamField path="description" type="String" required>
+  Short description of plugin functionality
+</ParamField>
+
+<ParamField path="tags" type="String[]" default="{}">
+  Search tags for finding the plugin in the panel
+</ParamField>
+
+<ParamField path="enabledByDefault" type="boolean" default="false">
+  Whether the plugin is enabled by default on first install
+</ParamField>
+
+<ParamField path="conflicts" type="String" default="">
+  Name of plugin that conflicts with this one (only one can be enabled)
+</ParamField>
+
+<ParamField path="loadWhenOutdated" type="boolean" default="false">
+  Load plugin even when RuneLite is outdated (use with caution)
+</ParamField>
+
+<ParamField path="hidden" type="boolean" default="false">
+  Hide plugin from the plugin panel (for core plugins)
+</ParamField>
+
+### Example
+
+```java
+@PluginDescriptor(
+    name = "Agility",
+    description = "Show helpful information about Agility courses and obstacles",
+    tags = {"agility", "courses", "obstacles", "overlay"},
+    enabledByDefault = false
+)
+public class AgilityPlugin extends Plugin
+{
+}
+```
+
+## @Inject
+
+Injects dependencies into plugin fields.
+
+```java
+import javax.inject.Inject;
+import net.runelite.api.Client;
+import net.runelite.client.ui.overlay.OverlayManager;
+
+@Inject
+private Client client;
+
+@Inject
+private OverlayManager overlayManager;
+
+@Inject
+private MyPluginConfig config;
+```
+
+### Common Injected Dependencies
+
+<Accordion title="Client" icon="desktop">
+  Main game client interface
+  
+  ```java
+  @Inject
+  private Client client;
+  ```
+</Accordion>
+
+<Accordion title="Plugin Configuration" icon="gear">
+  Plugin-specific configuration
+  
+  ```java
+  @Inject
+  private MyPluginConfig config;
+  ```
+</Accordion>
+
+<Accordion title="OverlayManager" icon="layer-group">
+  Manages plugin overlays
+  
+  ```java
+  @Inject
+  private OverlayManager overlayManager;
+  ```
+</Accordion>
+
+<Accordion title="ClientThread" icon="clock">
+  Execute code on the game thread
+  
+  ```java
+  @Inject
+  private ClientThread clientThread;
+  ```
+</Accordion>
+
+<Accordion title="ChatMessageManager" icon="message">
+  Send messages to chat
+  
+  ```java
+  @Inject
+  private ChatMessageManager chatMessageManager;
+  ```
+</Accordion>
+
+<Accordion title="ItemManager" icon="box">
+  Item definitions and prices
+  
+  ```java
+  @Inject
+  private ItemManager itemManager;
+  ```
+</Accordion>
+
+<Warning>
+Do not access `@Inject` fields in the plugin constructor - they are not initialized until after construction.
+</Warning>
+
+## @Subscribe
+
+Subscribes a method to an event from the EventBus.
+
+```java
+import net.runelite.client.eventbus.Subscribe;
+import net.runelite.api.events.GameTick;
+
+@Subscribe
+public void onGameTick(GameTick event)
+{
+    // Handle game tick
+}
+```
+
+### Event Method Requirements
+
+<Steps>
+  <Step title="Must be public">
+    Event handler methods must have `public` visibility
+    
+    ```java
+    @Subscribe
+    public void onEvent(Event event) { } // ✅ Correct
+    
+    @Subscribe
+    private void onEvent(Event event) { } // ❌ Won't work
+    ```
+  </Step>
+  
+  <Step title="Must accept exactly one parameter">
+    The parameter type determines which event to subscribe to
+    
+    ```java
+    @Subscribe
+    public void onGameTick(GameTick event) { } // ✅ Correct
+    
+    @Subscribe
+    public void onEvent() { } // ❌ No parameter
+    
+    @Subscribe
+    public void onEvent(GameTick e1, GameTick e2) { } // ❌ Multiple parameters
+    ```
+  </Step>
+  
+  <Step title="Must return void">
+    Event handlers cannot return values
+    
+    ```java
+    @Subscribe
+    public void onGameTick(GameTick event) { } // ✅ Correct
+    
+    @Subscribe
+    public int onGameTick(GameTick event) { return 0; } // ❌ Returns value
+    ```
+  </Step>
+</Steps>
+
+### Common Events
+
+```java
+// Runs every game tick (600ms)
+@Subscribe
+public void onGameTick(GameTick event) { }
+
+// Player or NPC spawned
+@Subscribe
+public void onActorDeath(ActorDeath event) { }
+
+// Chat message received
+@Subscribe
+public void onChatMessage(ChatMessage event) { }
+
+// NPC spawned
+@Subscribe
+public void onNpcSpawned(NpcSpawned event) { }
+
+// Game state changed
+@Subscribe
+public void onGameStateChanged(GameStateChanged event) { }
+
+// Item spawned on ground
+@Subscribe
+public void onItemSpawned(ItemSpawned event) { }
+```
+
+<Info>
+Event handlers are automatically registered when the plugin starts and unregistered when it stops.
+</Info>
+
+## @Provides
+
+Provides a dependency to the Guice injector.
+
+```java
+import com.google.inject.Provides;
+import net.runelite.client.config.ConfigManager;
+
+@Provides
+MyPluginConfig provideConfig(ConfigManager configManager)
+{
+    return configManager.getConfig(MyPluginConfig.class);
+}
+```
+
+This makes `MyPluginConfig` available for injection:
+
+```java
+@Inject
+private MyPluginConfig config; // Injected via @Provides method
+```
+
+<Note>
+The `@Provides` annotation comes from Guice, not RuneLite.
+</Note>
+
+## @Schedule
+
+Schedules a method to run periodically.
+
+```java
+import net.runelite.client.plugins.PluginDescriptor;
+import java.util.concurrent.TimeUnit;
+
+@Schedule(
+    period = 1,
+    unit = TimeUnit.SECONDS,
+    asynchronous = true
+)
+public void updateData()
+{
+    // Runs every 1 second
+    log.debug("Scheduled update");
+}
+```
+
+### Parameters
+
+<ParamField path="period" type="long" required>
+  How often to run (in units specified by `unit`)
+</ParamField>
+
+<ParamField path="unit" type="TimeUnit" required>
+  Time unit for period (SECONDS, MINUTES, etc.)
+</ParamField>
+
+<ParamField path="asynchronous" type="boolean" default="false">
+  Whether to run asynchronously (off the client thread)
+</ParamField>
+
+### Example
+
+```java
+// Update every 5 seconds asynchronously
+@Schedule(
+    period = 5,
+    unit = TimeUnit.SECONDS,
+    asynchronous = true
+)
+public void fetchExternalData()
+{
+    // Fetch from API, database, etc.
+}
+
+// Update every 600ms on client thread
+@Schedule(
+    period = 600,
+    unit = TimeUnit.MILLISECONDS,
+    asynchronous = false
+)
+public void updateGameState()
+{
+    // Access client state safely
+}
+```
+
+<Warning>
+Scheduled methods run even when the client is paused. Use `@Subscribe` to `GameTick` for game-synchronized updates.
+</Warning>
+
+## Configuration Annotations
+
+### @ConfigGroup
+
+Defines the configuration group name.
+
+```java
+import net.runelite.client.config.ConfigGroup;
+
+@ConfigGroup("myplugin")
+public interface MyPluginConfig extends Config
+{
+}
+```
+
+### @ConfigItem
+
+Defines a configuration option.
+
+```java
+import net.runelite.client.config.ConfigItem;
+
+@ConfigItem(
+    keyName = "showOverlay",
+    name = "Show Overlay",
+    description = "Display the overlay on screen",
+    position = 0
+)
+default boolean showOverlay()
+{
+    return true;
+}
+```
+
+### @ConfigSection
+
+Groups configuration items into sections.
+
+```java
+import net.runelite.client.config.ConfigSection;
+
+@ConfigSection(
+    name = "Notifications",
+    description = "Notification settings",
+    position = 1
+)
+String notificationSection = "notifications";
+
+@ConfigItem(
+    keyName = "enableNotifications",
+    name = "Enable Notifications",
+    description = "Show desktop notifications",
+    section = notificationSection
+)
+default boolean enableNotifications()
+{
+    return true;
+}
+```
+
+See [Configuration Management](/plugins/config-management) for complete details.
+
+## Complete Example
+
+```java MyPlugin.java
+package net.runelite.client.plugins.myplugin;
+
+import com.google.inject.Provides;
+import javax.inject.Inject;
+import java.util.concurrent.TimeUnit;
+import net.runelite.api.Client;
+import net.runelite.api.events.GameTick;
+import net.runelite.client.config.ConfigManager;
+import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.plugins.Plugin;
+import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.ui.overlay.OverlayManager;
+
+@PluginDescriptor(
+    name = "My Plugin",
+    description = "Demonstrates all plugin annotations",
+    tags = {"example", "tutorial"},
+    enabledByDefault = false
+)
+public class MyPlugin extends Plugin
+{
+    // Dependency injection
+    @Inject
+    private Client client;
+    
+    @Inject
+    private OverlayManager overlayManager;
+    
+    @Inject
+    private MyPluginConfig config;
+    
+    @Inject
+    private MyPluginOverlay overlay;
+    
+    // Lifecycle
+    @Override
+    protected void startUp() throws Exception
+    {
+        overlayManager.add(overlay);
+    }
+    
+    @Override
+    protected void shutDown() throws Exception
+    {
+        overlayManager.remove(overlay);
+    }
+    
+    // Event subscription
+    @Subscribe
+    public void onGameTick(GameTick event)
+    {
+        if (config.showOverlay())
+        {
+            updateOverlayData();
+        }
+    }
+    
+    // Scheduled task
+    @Schedule(
+        period = 30,
+        unit = TimeUnit.SECONDS,
+        asynchronous = true
+    )
+    public void cleanupCache()
+    {
+        // Clean up old data
+    }
+    
+    // Configuration provider
+    @Provides
+    MyPluginConfig provideConfig(ConfigManager configManager)
+    {
+        return configManager.getConfig(MyPluginConfig.class);
+    }
+    
+    private void updateOverlayData()
+    {
+        // Update logic
+    }
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Descriptive Names" icon="tag">
+    Make plugin names and descriptions clear:
+    
+    ```java
+    // GOOD
+    @PluginDescriptor(
+        name = "Boss Spawn Timers",
+        description = "Track and display boss respawn timers"
+    )
+    
+    // BAD
+    @PluginDescriptor(
+        name = "BST",
+        description = "Timers"
+    )
+    ```
+  </Accordion>
+  
+  <Accordion title="Add Relevant Tags" icon="tags">
+    Use tags that users would search for:
+    
+    ```java
+    @PluginDescriptor(
+        name = "Clue Scroll Helper",
+        tags = {"clue", "treasure", "puzzle", "helper", "solver"}
+    )
+    ```
+  </Accordion>
+  
+  <Accordion title="Minimize Scheduled Tasks" icon="clock">
+    Prefer event-driven code over scheduled polling:
+    
+    ```java
+    // GOOD: React to events
+    @Subscribe
+    public void onStatChanged(StatChanged event)
+    {
+        handleLevelUp(event.getSkill());
+    }
+    
+    // BAD: Poll every second
+    @Schedule(period = 1, unit = TimeUnit.SECONDS)
+    public void checkLevelUp()
+    {
+        // Check if level changed
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Creating Plugins" icon="plus" href="/plugins/creating-plugins">
+    Build your first plugin
+  </Card>
+  <Card title="Configuration" icon="gear" href="/plugins/config-management">
+    Add user settings
+  </Card>
+  <Card title="Event Handling" icon="bolt" href="/api/event-handling">
+    Handle game events
+  </Card>
+  <Card title="Examples" icon="code" href="/plugins/examples">
+    Real plugin examples
+  </Card>
+</CardGroup>

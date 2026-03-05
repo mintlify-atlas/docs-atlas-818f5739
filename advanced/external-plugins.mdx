@@ -1,0 +1,404 @@
+---
+title: External Plugins
+description: Learn how to develop and distribute plugins through the RuneLite Plugin Hub
+---
+
+## Overview
+
+RuneLite's external plugin system allows developers to create and distribute plugins through the Plugin Hub without requiring them to be merged into the main RuneLite repository. External plugins are downloaded, verified, and loaded dynamically at runtime.
+
+## Plugin Hub Architecture
+
+### How External Plugins Work
+
+External plugins are managed by the `ExternalPluginManager`, which handles:
+
+- **Manifest verification**: Downloads and cryptographically verifies plugin manifests using RSA signatures
+- **Plugin download**: Fetches plugin JARs with SHA-256 hash verification
+- **Isolated class loading**: Loads plugins in separate `PluginHubClassLoader` instances
+- **Automatic updates**: Periodically checks for plugin updates and refreshes installations
+
+<Info>
+External plugins are stored in the `RuneLite.PLUGINS_DIR` directory and are kept for 3 days after uninstallation to avoid re-downloading.
+</Info>
+
+### Manifest System
+
+The Plugin Hub uses a signed manifest system to ensure plugin integrity:
+
+```java
+// From ExternalPluginClient.java:81-126
+public PluginHubManifest.ManifestLite downloadManifestLite() throws IOException, VerificationException
+{
+    return downloadManifest("lite", PluginHubManifest.ManifestLite.class);
+}
+
+private <T> T downloadManifest(String name, Class<T> clazz) throws IOException, VerificationException
+{
+    HttpUrl manifest = pluginHubBase
+        .newBuilder()
+        .addPathSegment("manifest")
+        .addPathSegment(RuneLiteProperties.getPluginHubVersion() + "_" + name + ".js")
+        .build();
+    
+    try (Response res = okHttpClient.newCall(new Request.Builder().url(manifest).build()).execute())
+    {
+        BufferedSource src = res.body().source();
+        
+        byte[] signature = new byte[src.readInt()];
+        src.readFully(signature);
+        
+        byte[] data = src.readByteArray();
+        Signature s = Signature.getInstance("SHA256withRSA");
+        s.initVerify(loadCertificate());
+        s.update(data);
+        
+        if (!s.verify(signature))
+        {
+            throw new VerificationException("Unable to verify external plugin manifest");
+        }
+        
+        return gson.fromJson(new String(data, StandardCharsets.UTF_8), clazz);
+    }
+}
+```
+
+## Developing External Plugins
+
+### Project Setup
+
+Create a new Gradle project with the RuneLite dependencies:
+
+```groovy
+plugins {
+    id 'java'
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        url 'https://repo.runelite.net'
+    }
+}
+
+dependencies {
+    compileOnly 'net.runelite:client:latest.release'
+    compileOnly 'org.projectlombok:lombok:1.18.30'
+    annotationProcessor 'org.projectlombok:lombok:1.18.30'
+}
+
+sourceCompatibility = '11'
+targetCompatibility = '11'
+```
+
+### Plugin Metadata
+
+Every external plugin requires a `runelite_plugin.json` manifest file in the JAR resources:
+
+```json
+{
+  "plugins": [
+    "com.example.MyPlugin"
+  ]
+}
+```
+
+<Warning>
+The `plugins` array must contain the fully qualified class names of all plugin classes in your JAR.
+</Warning>
+
+### Plugin Class Example
+
+```java
+package com.example;
+
+import com.google.inject.Provides;
+import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.Client;
+import net.runelite.api.events.GameTick;
+import net.runelite.client.config.ConfigManager;
+import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.plugins.Plugin;
+import net.runelite.client.plugins.PluginDescriptor;
+
+@Slf4j
+@PluginDescriptor(
+    name = "Example Plugin",
+    description = "An example external plugin",
+    tags = {"example", "tutorial"}
+)
+public class MyPlugin extends Plugin
+{
+    @Inject
+    private Client client;
+    
+    @Inject
+    private MyPluginConfig config;
+    
+    @Override
+    protected void startUp() throws Exception
+    {
+        log.info("Example plugin started!");
+    }
+    
+    @Override
+    protected void shutDown() throws Exception
+    {
+        log.info("Example plugin stopped!");
+    }
+    
+    @Subscribe
+    public void onGameTick(GameTick gameTick)
+    {
+        // Plugin logic here
+    }
+    
+    @Provides
+    MyPluginConfig provideConfig(ConfigManager configManager)
+    {
+        return configManager.getConfig(MyPluginConfig.class);
+    }
+}
+```
+
+## Plugin Lifecycle
+
+### Loading Process
+
+The external plugin loading process (from `ExternalPluginManager.java:136-396`):
+
+1. **Refresh trigger**: Called on startup or profile change
+2. **Safe mode check**: External plugins are disabled in safe mode
+3. **Manifest download**: Downloads and verifies the plugin hub manifest
+4. **File validation**: Checks each installed plugin's JAR hash
+5. **Download missing plugins**: Downloads any plugins that need updating
+6. **Class loading**: Creates `PluginHubClassLoader` for each plugin
+7. **Plugin instantiation**: Loads plugin classes and registers with `PluginManager`
+8. **Startup**: Starts plugins (if not during client startup)
+
+```java
+// From ExternalPluginManager.java:310-320
+log.info("Loading external plugin \"{}\" jar \"{}\"", jarData.getInternalName(), jarData.getJarHash());
+
+List<Plugin> newPlugins = null;
+try
+{
+    PluginHubClassLoader cl = new PluginHubClassLoader(
+        jarData, 
+        new URL[]{jarData.getJarFile().toURI().toURL()}, 
+        gson
+    );
+    
+    List<Class<?>> clazzes = new ArrayList<>();
+    for (String className : cl.getStub().getPlugins())
+    {
+        clazzes.add(cl.loadClass(className));
+    }
+    
+    List<Plugin> newPlugins2 = newPlugins = pluginManager.loadPlugins(clazzes, null);
+}
+```
+
+### Isolated Class Loading
+
+Each external plugin gets its own `PluginHubClassLoader`:
+
+```java
+// From PluginHubClassLoader.java:39-60
+class PluginHubClassLoader extends URLClassLoader implements ReflectUtil.PrivateLookupableClassLoader
+{
+    @Getter
+    private final PluginHubManifest.JarData jarData;
+    
+    @Getter
+    private final PluginHubManifest.Stub stub;
+    
+    @Getter
+    @Setter
+    private MethodHandles.Lookup lookup;
+    
+    PluginHubClassLoader(PluginHubManifest.JarData jarData, URL[] urls, Gson gson) throws IOException
+    {
+        super(urls, PluginHubClassLoader.class.getClassLoader());
+        this.jarData = jarData;
+        try (InputStream is = getResourceAsStream("runelite_plugin.json"))
+        {
+            this.stub = gson.fromJson(
+                new InputStreamReader(is, StandardCharsets.UTF_8), 
+                PluginHubManifest.Stub.class
+            );
+        }
+        ReflectUtil.installLookupHelper(this);
+    }
+}
+```
+
+<Note>
+The isolated class loading prevents plugin conflicts and allows multiple versions of dependencies.
+</Note>
+
+## Installing and Managing Plugins
+
+### Programmatic Installation
+
+```java
+// Install a plugin by internal name
+externalPluginManager.install("example-plugin");
+
+// Remove a plugin
+externalPluginManager.remove("example-plugin");
+
+// Force update all plugins
+externalPluginManager.update();
+
+// Get list of installed plugins
+List<String> installed = externalPluginManager.getInstalledExternalPlugins();
+```
+
+### Storage Format
+
+Installed plugins are stored in the RuneLite configuration as a CSV list:
+
+```java
+// From ExternalPluginManager.java:398-422
+public List<String> getInstalledExternalPlugins()
+{
+    String externalPluginsStr = configManager.getConfiguration(
+        RuneLiteConfig.GROUP_NAME, 
+        PLUGIN_LIST_KEY
+    );
+    return Text.fromCSV(externalPluginsStr == null ? "" : externalPluginsStr);
+}
+
+public void install(String key)
+{
+    Set<String> plugins = new HashSet<>(getInstalledExternalPlugins());
+    if (plugins.add(key))
+    {
+        configManager.setConfiguration(
+            RuneLiteConfig.GROUP_NAME, 
+            PLUGIN_LIST_KEY, 
+            Text.toCSV(plugins)
+        );
+        executor.submit(this::refreshPlugins);
+    }
+}
+```
+
+## Security and Verification
+
+### Hash Verification
+
+All downloaded plugin JARs are verified using SHA-256 hashes:
+
+```java
+// From ExternalPluginManager.java:232-254
+HashingInputStream his = new HashingInputStream(
+    Hashing.sha256(),
+    new CountingInputStream(res.body().byteStream(), i ->
+        SplashScreen.stage(splashStart + (splashLength * .2), 
+            splashStart + (splashLength * .8),
+            null, "Downloading " + jarData.getDisplayName(),
+            i + fdownloaded, toDownload, true)
+    )
+);
+Files.asByteSink(jarData.getJarFile()).writeFrom(his);
+if (!PluginHubManifest.HASH_ENCODER.encodeToString(his.hash().asBytes())
+    .equals(jarData.getJarHash()))
+{
+    throw new VerificationException(
+        "Plugin " + jarData.getInternalName() + " didn't match its hash"
+    );
+}
+```
+
+### Certificate Pinning
+
+The manifest is signed with an RSA certificate that is bundled with RuneLite:
+
+```java
+// From ExternalPluginClient.java:161-172
+private static Certificate loadCertificate()
+{
+    try (InputStream in = ExternalPluginClient.class
+        .getResourceAsStream("externalplugins.crt"))
+    {
+        CertificateFactory certFactory = CertificateFactory.getInstance("X.509");
+        return certFactory.generateCertificate(in);
+    }
+    catch (CertificateException | IOException e)
+    {
+        throw new RuntimeException(e);
+    }
+}
+```
+
+<Warning>
+External plugins run with the same permissions as RuneLite. Only install plugins from trusted sources.
+</Warning>
+
+## Publishing to Plugin Hub
+
+To publish your plugin to the official Plugin Hub:
+
+1. **Fork the plugin hub repository**: https://github.com/runelite/plugin-hub
+2. **Add your plugin**: Create a new subdirectory with your plugin source
+3. **Submit a pull request**: Follow the contribution guidelines
+4. **Pass review**: RuneLite team reviews code for security and quality
+5. **Automatic deployment**: Approved plugins are automatically built and signed
+
+<Accordion title="Plugin Hub Requirements">
+- Plugin must be useful to the broader OSRS community
+- Code must follow RuneLite style guidelines
+- No malicious or rule-breaking functionality
+- Must not duplicate existing plugin functionality
+- Proper error handling and logging
+- Clear plugin description and configuration options
+</Accordion>
+
+## Troubleshooting
+
+### Plugin Won't Load
+
+- Verify `runelite_plugin.json` exists in resources
+- Check plugin class names match manifest
+- Ensure all dependencies are available
+- Review RuneLite logs for errors
+
+### Hash Mismatch Errors
+
+```
+Plugin example-plugin didn't match its hash
+```
+
+This indicates the downloaded JAR doesn't match the expected hash. Try:
+- Force update: `externalPluginManager.update()`
+- Clear plugin cache and re-download
+- Check for network issues or proxies modifying downloads
+
+### ClassNotFoundException
+
+Ensure all plugin classes are:
+- In the `runelite_plugin.json` manifest
+- Compiled into the JAR
+- Using correct package names
+
+## Best Practices
+
+<Card title="External Plugin Development">
+- Use dependency injection for all services
+- Follow RuneLite's event-driven architecture
+- Properly clean up resources in `shutDown()`
+- Use config system for user preferences
+- Add comprehensive logging for debugging
+- Test with multiple plugin combinations
+- Keep plugin lightweight and performant
+</Card>
+
+## Related Topics
+
+- [Plugin Development Guide](/guides/plugin-development)
+- [Event System](/api/events)
+- [Configuration System](/api/config)
+- [Performance Optimization](/advanced/performance)

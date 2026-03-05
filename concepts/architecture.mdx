@@ -1,0 +1,290 @@
+---
+title: 'RuneLite Architecture'
+description: 'Understanding the overall architecture and design of the RuneLite client'
+---
+
+## Overview
+
+RuneLite is built on a modular, dependency injection-based architecture that enables powerful extensibility through plugins. The client is structured around several key components that work together to provide a rich Old School RuneScape experience.
+
+## Core Architecture Components
+
+<CardGroup cols={2}>
+  <Card title="Dependency Injection" icon="syringe">
+    Google Guice manages all dependencies and component lifecycle
+  </Card>
+  <Card title="Event Bus" icon="bolt">
+    Central event-driven communication between components
+  </Card>
+  <Card title="Plugin System" icon="plug">
+    Modular plugins that extend functionality
+  </Card>
+  <Card title="Configuration" icon="gear">
+    Persistent configuration with profile support
+  </Card>
+</CardGroup>
+
+## Application Startup Flow
+
+The RuneLite client follows a well-defined initialization sequence:
+
+<Steps>
+  <Step title="Bootstrap">
+    The `main()` method in `RuneLite.java` parses command-line arguments and initializes the HTTP client
+    
+    ```java
+    public static void main(String[] args) throws Exception
+    {
+        Locale.setDefault(Locale.ENGLISH);
+        
+        final OptionParser parser = new OptionParser(false);
+        parser.accepts("developer-mode", "Enable developer tools");
+        parser.accepts("debug", "Show extra debugging output");
+        parser.accepts("safe-mode", "Disables external plugins and the GPU plugin");
+        // ... more options
+    }
+    ```
+  </Step>
+  
+  <Step title="Guice Injector Creation">
+    Creates the dependency injection container with `RuneLiteModule`
+    
+    ```java
+    injector = Guice.createInjector(new RuneLiteModule(
+        okHttpClient,
+        clientLoader,
+        runtimeConfigLoader,
+        developerMode,
+        options.has("safe-mode"),
+        options.has("disable-telemetry"),
+        options.valueOf(sessionfile),
+        (String) options.valueOf("profile"),
+        options.has(insecureWriteCredentials),
+        options.has("noupdate")
+    ));
+    ```
+  </Step>
+  
+  <Step title="Component Initialization">
+    The `start()` method initializes all major components in order:
+    
+    ```java
+    public void start() throws Exception
+    {
+        // Inject members into client
+        injector.injectMembers(client);
+        
+        // Initialize game client
+        client.initialize();
+        
+        // Load configuration
+        configManager.load();
+        
+        // Load plugins
+        pluginManager.loadCorePlugins();
+        pluginManager.loadSideLoadPlugins();
+        externalPluginManager.loadExternalPlugins();
+        
+        // Register event listeners
+        eventBus.register(clientUI);
+        eventBus.register(pluginManager);
+        eventBus.register(overlayManager);
+        eventBus.register(configManager);
+        
+        // Start plugins
+        pluginManager.startPlugins();
+    }
+    ```
+  </Step>
+  
+  <Step title="UI Display">
+    Shows the client UI and unblocks the game client
+    
+    ```java
+    clientUI.show();
+    client.unblockStartup();
+    ```
+  </Step>
+</Steps>
+
+## Dependency Injection with Guice
+
+RuneLite uses Google Guice for dependency injection, which provides loose coupling and testability.
+
+### RuneLiteModule Configuration
+
+The `RuneLiteModule` class configures all the bindings:
+
+```java RuneLiteModule.java:80-148
+@Override
+protected void configure()
+{
+    // Bind configuration values
+    bindConstant().annotatedWith(Names.named("developerMode")).to(developerMode);
+    bindConstant().annotatedWith(Names.named("safeMode")).to(safeMode);
+    
+    // Bind executor service
+    bind(ScheduledExecutorService.class)
+        .toInstance(new ExecutorServiceExceptionLogger(
+            Executors.newSingleThreadScheduledExecutor()));
+    
+    // Bind managers
+    bind(MenuManager.class);
+    bind(ChatMessageManager.class);
+    bind(ItemManager.class);
+    bind(Scheduler.class);
+    bind(PluginManager.class);
+    bind(SessionManager.class);
+    
+    // Bind EventBus
+    bind(EventBus.class).toInstance(new EventBus());
+}
+```
+
+<Note>
+  All major RuneLite components are `@Singleton` scoped, ensuring only one instance exists throughout the application lifecycle.
+</Note>
+
+## Key Directories and Storage
+
+RuneLite stores data in the user's home directory:
+
+```java RuneLite.java:105-112
+public static final File RUNELITE_DIR = 
+    new File(System.getProperty("user.home"), ".runelite");
+public static final File CACHE_DIR = new File(RUNELITE_DIR, "cache");
+public static final File PLUGINS_DIR = new File(RUNELITE_DIR, "plugins");
+public static final File SCREENSHOT_DIR = new File(RUNELITE_DIR, "screenshots");
+public static final File LOGS_DIR = new File(RUNELITE_DIR, "logs");
+public static final File NOTIFICATIONS_DIR = new File(RUNELITE_DIR, "notifications");
+public static final File FONTS_DIR = new File(RUNELITE_DIR, "fonts");
+```
+
+<Accordion title="Directory Structure">
+  - `.runelite/` - Main RuneLite directory
+    - `cache/` - HTTP cache and game assets
+    - `plugins/` - External plugin JARs
+    - `screenshots/` - Captured screenshots
+    - `logs/` - Application logs
+    - `notifications/` - Notification sound files
+    - `fonts/` - Custom fonts
+    - `settings.properties` - Configuration storage
+    - `profiles/` - Configuration profiles
+</Accordion>
+
+## Threading Model
+
+RuneLite operates with multiple threads:
+
+<CardGroup cols={2}>
+  <Card title="Client Thread" icon="gamepad">
+    Runs the game logic at ~50fps. All game state access must occur on this thread.
+  </Card>
+  <Card title="Event Dispatch Thread (EDT)" icon="window-maximize">
+    Handles all Swing UI operations. Plugins start/stop on this thread.
+  </Card>
+  <Card title="Executor Service" icon="clock">
+    Background tasks like HTTP requests and scheduled operations.
+  </Card>
+  <Card title="Render Thread" icon="paint-brush">
+    GPU plugin rendering (when enabled).
+  </Card>
+</CardGroup>
+
+<Warning>
+  Never perform blocking operations (like HTTP requests) on the client thread or EDT. Use the injected `ScheduledExecutorService` instead.
+</Warning>
+
+## Client API vs Client Implementation
+
+RuneLite separates the API interface from implementation:
+
+```java
+@Inject
+private Client client;  // net.runelite.api.Client interface
+```
+
+The `Client` interface provides access to:
+- Game state (players, NPCs, objects)
+- Widget/interface data
+- World information
+- Player inventory and equipment
+- Game settings and configuration
+
+<Info>
+  The actual game client is loaded dynamically and implements the `Client` interface through bytecode manipulation (mixins).
+</Info>
+
+## HTTP Client
+
+RuneLite provides a configured OkHttpClient for making HTTP requests:
+
+```java RuneLite.java:427-478
+static OkHttpClient buildHttpClient(boolean insecureSkipTlsVerification)
+{
+    OkHttpClient.Builder builder = new OkHttpClient.Builder()
+        .pingInterval(30, TimeUnit.SECONDS)
+        .addInterceptor(chain -> {
+            Request request = chain.request();
+            if (request.header("User-Agent") != null) {
+                return chain.proceed(request);
+            }
+            
+            Request userAgentRequest = request
+                .newBuilder()
+                .header("User-Agent", USER_AGENT)
+                .build();
+            return chain.proceed(userAgentRequest);
+        })
+        .cache(new Cache(new File(CACHE_DIR, "okhttp"), MAX_OKHTTP_CACHE_SIZE));
+    
+    return builder.build();
+}
+```
+
+<Note>
+  The HTTP client includes automatic User-Agent headers, response caching, and connection pooling.
+</Note>
+
+## Command-Line Options
+
+RuneLite supports several command-line flags for development and debugging:
+
+| Option | Description |
+|--------|-------------|
+| `--developer-mode` | Enables developer tools and side-loaded plugins |
+| `--debug` | Enables debug logging output |
+| `--safe-mode` | Disables external plugins and GPU plugin |
+| `--profile <name>` | Uses a specific configuration profile |
+| `--sessionfile <file>` | Specifies session file location |
+| `--insecure-skip-tls-verification` | Disables TLS certificate verification |
+
+## Version Information
+
+RuneLite tracks version information through `RuneLiteProperties`:
+
+```java RuneLite.java:115
+public static String USER_AGENT = "RuneLite/" + 
+    RuneLiteProperties.getVersion() + "-" + 
+    RuneLiteProperties.getCommit() + 
+    (RuneLiteProperties.isDirty() ? "+" : "");
+```
+
+This provides full traceability of which code version is running.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Plugin System" href="/concepts/plugin-system" icon="plug">
+    Learn how plugins extend RuneLite functionality
+  </Card>
+  <Card title="Event Bus" href="/concepts/event-bus" icon="bolt">
+    Understand event-driven communication
+  </Card>
+  <Card title="Configuration" href="/concepts/configuration" icon="gear">
+    Manage persistent settings
+  </Card>
+  <Card title="UI Overlays" href="/concepts/ui-overlays" icon="layer-group">
+    Create custom UI overlays
+  </Card>
+</CardGroup>

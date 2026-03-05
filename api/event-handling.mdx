@@ -1,0 +1,386 @@
+---
+title: 'Event Handling'
+description: 'Patterns and best practices for handling events in RuneLite plugins'
+---
+
+This guide covers common patterns and best practices for handling events in RuneLite plugins.
+
+## Basic Event Handler
+
+```java
+public class MyPlugin extends Plugin {
+    @Inject
+    private Client client;
+    
+    @Subscribe
+    public void onGameTick(GameTick event) {
+        // Always check game state first
+        if (client.getGameState() != GameState.LOGGED_IN) {
+            return;
+        }
+        
+        // Your logic here
+    }
+}
+```
+
+## State Management
+
+### Initialization and Cleanup
+
+```java
+public class TrackerPlugin extends Plugin {
+    private boolean pluginActive = false;
+    private int tickCount = 0;
+    private final Set<NPC> trackedNpcs = new HashSet<>();
+    
+    @Subscribe
+    public void onGameStateChanged(GameStateChanged event) {
+        if (event.getGameState() == GameState.LOGGED_IN) {
+            pluginActive = true;
+            tickCount = 0;
+            log.info("Plugin activated");
+        }
+        else if (event.getGameState() == GameState.LOGIN_SCREEN) {
+            pluginActive = false;
+            trackedNpcs.clear();
+            log.info("Plugin deactivated");
+        }
+    }
+    
+    @Subscribe
+    public void onGameTick(GameTick event) {
+        if (!pluginActive) {
+            return;
+        }
+        tickCount++;
+    }
+}
+```
+
+## Entity Tracking
+
+### NPC Tracking
+
+```java
+private final Map<Integer, NPC> trackedNpcs = new HashMap<>();
+
+@Subscribe
+public void onNpcSpawned(NpcSpawned event) {
+    NPC npc = event.getNpc();
+    if (shouldTrack(npc)) {
+        trackedNpcs.put(npc.getIndex(), npc);
+        log.info("Started tracking NPC: " + npc.getName());
+    }
+}
+
+@Subscribe
+public void onNpcDespawned(NpcDespawned event) {
+    NPC npc = event.getNpc();
+    trackedNpcs.remove(npc.getIndex());
+}
+
+@Subscribe
+public void onNpcChanged(NpcChanged event) {
+    NPC oldNpc = event.getOld();
+    NPC newNpc = event.getNpc();
+    
+    if (trackedNpcs.containsKey(oldNpc.getIndex())) {
+        trackedNpcs.put(newNpc.getIndex(), newNpc);
+        log.info("Tracked NPC transformed");
+    }
+}
+
+private boolean shouldTrack(NPC npc) {
+    return npc.getName() != null && 
+           npc.getName().equals("Goblin");
+}
+```
+
+### Player Tracking
+
+```java
+private final Map<String, Player> nearbyPlayers = new HashMap<>();
+
+@Subscribe
+public void onPlayerSpawned(PlayerSpawned event) {
+    Player player = event.getPlayer();
+    String name = player.getName();
+    
+    if (name != null) {
+        nearbyPlayers.put(name, player);
+        
+        if (player.isFriend()) {
+            log.info("Friend appeared: " + name);
+        }
+    }
+}
+
+@Subscribe
+public void onPlayerDespawned(PlayerDespawned event) {
+    Player player = event.getPlayer();
+    if (player.getName() != null) {
+        nearbyPlayers.remove(player.getName());
+    }
+}
+```
+
+## Inventory Monitoring
+
+### Change Detection
+
+```java
+private Map<Integer, Integer> previousInventory = new HashMap<>();
+
+@Subscribe
+public void onItemContainerChanged(ItemContainerChanged event) {
+    if (event.getContainerId() != InventoryID.INVENTORY.getId()) {
+        return;
+    }
+    
+    ItemContainer inventory = event.getItemContainer();
+    Map<Integer, Integer> currentInventory = new HashMap<>();
+    
+    // Build current state
+    for (Item item : inventory.getItems()) {
+        if (item.getId() == -1) continue;
+        currentInventory.merge(item.getId(), item.getQuantity(), Integer::sum);
+    }
+    
+    // Detect changes
+    for (Map.Entry<Integer, Integer> entry : currentInventory.entrySet()) {
+        int itemId = entry.getKey();
+        int newQty = entry.getValue();
+        int oldQty = previousInventory.getOrDefault(itemId, 0);
+        
+        if (newQty > oldQty) {
+            onItemGained(itemId, newQty - oldQty);
+        }
+        else if (newQty < oldQty) {
+            onItemLost(itemId, oldQty - newQty);
+        }
+    }
+    
+    previousInventory = currentInventory;
+}
+
+private void onItemGained(int itemId, int quantity) {
+    ItemComposition comp = client.getItemDefinition(itemId);
+    log.info("Gained: " + comp.getName() + " x" + quantity);
+}
+
+private void onItemLost(int itemId, int quantity) {
+    ItemComposition comp = client.getItemDefinition(itemId);
+    log.info("Lost: " + comp.getName() + " x" + quantity);
+}
+```
+
+## Chat Message Filtering
+
+```java
+@Subscribe
+public void onChatMessage(ChatMessage event) {
+    ChatMessageType type = event.getType();
+    String message = event.getMessage();
+    
+    switch (type) {
+        case GAMEMESSAGE:
+            handleGameMessage(message);
+            break;
+        case PUBLICCHAT:
+            handlePublicChat(event.getName(), message);
+            break;
+        case PRIVATECHAT:
+            handlePrivateChat(event.getName(), message);
+            break;
+        case FRIENDSCHAT:
+            handleFriendsChat(event.getSender(), event.getName(), message);
+            break;
+    }
+}
+
+private void handleGameMessage(String message) {
+    if (message.contains("You've just advanced")) {
+        // Level up
+    }
+    else if (message.contains("Oh dear, you are dead!")) {
+        // Player died
+    }
+}
+
+private void handlePublicChat(String player, String message) {
+    if (message.toLowerCase().contains("selling")) {
+        log.info(player + " is selling something");
+    }
+}
+```
+
+## Menu Manipulation
+
+### Adding Custom Menu Entries
+
+```java
+@Subscribe
+public void onMenuOpened(MenuOpened event) {
+    if (!config.enableCustomMenus()) {
+        return;
+    }
+    
+    MenuEntry[] entries = event.getMenuEntries();
+    
+    // Check if we should add custom entry
+    for (MenuEntry entry : entries) {
+        if (shouldAddCustomEntry(entry)) {
+            addCustomMenuEntry(entry.getTarget());
+            break;
+        }
+    }
+}
+
+private void addCustomMenuEntry(String target) {
+    client.getMenu().createMenuEntry(-1)
+        .setOption("Custom Action")
+        .setTarget(target)
+        .setType(MenuAction.RUNELITE)
+        .onClick(this::handleCustomAction);
+}
+
+private void handleCustomAction(MenuEntry entry) {
+    log.info("Custom action clicked on: " + entry.getTarget());
+}
+```
+
+### Blocking Menu Actions
+
+```java
+@Subscribe
+public void onMenuOptionClicked(MenuOptionClicked event) {
+    String option = event.getMenuOption();
+    String target = event.getMenuTarget();
+    
+    // Block dropping expensive items
+    if (option.equals("Drop")) {
+        int itemId = event.getItemId();
+        ItemComposition comp = client.getItemDefinition(itemId);
+        
+        if (comp.getPrice() > 1000000) {
+            event.consume(); // Cancel the action
+            client.addChatMessage(
+                ChatMessageType.GAMEMESSAGE,
+                "",
+                "Cannot drop expensive item",
+                null
+            );
+        }
+    }
+}
+```
+
+## Animation Detection
+
+```java
+private int lastPlayerAnimation = -1;
+
+@Subscribe
+public void onAnimationChanged(AnimationChanged event) {
+    Actor actor = event.getActor();
+    
+    if (actor != client.getLocalPlayer()) {
+        return;
+    }
+    
+    int animationId = actor.getAnimation();
+    
+    // Detect animation start
+    if (lastPlayerAnimation == -1 && animationId != -1) {
+        onAnimationStart(animationId);
+    }
+    // Detect animation end
+    else if (lastPlayerAnimation != -1 && animationId == -1) {
+        onAnimationEnd(lastPlayerAnimation);
+    }
+    
+    lastPlayerAnimation = animationId;
+}
+
+private void onAnimationStart(int animationId) {
+    if (animationId == AnimationID.MINING_RUNE_PICKAXE) {
+        log.info("Started mining");
+    }
+}
+
+private void onAnimationEnd(int animationId) {
+    log.info("Animation " + animationId + " ended");
+}
+```
+
+## Timed Events
+
+```java
+private int ticksSinceLastAction = 0;
+private static final int ACTION_INTERVAL = 10; // 10 ticks = 6 seconds
+
+@Subscribe
+public void onGameTick(GameTick event) {
+    if (client.getGameState() != GameState.LOGGED_IN) {
+        return;
+    }
+    
+    ticksSinceLastAction++;
+    
+    if (ticksSinceLastAction >= ACTION_INTERVAL) {
+        performPeriodicAction();
+        ticksSinceLastAction = 0;
+    }
+}
+
+private void performPeriodicAction() {
+    // Action performed every 6 seconds
+}
+```
+
+## Performance Optimization
+
+### Debouncing
+
+```java
+private int updateCooldown = 0;
+private static final int UPDATE_FREQUENCY = 5; // Update every 5 ticks
+
+@Subscribe
+public void onGameTick(GameTick event) {
+    if (updateCooldown > 0) {
+        updateCooldown--;
+        return;
+    }
+    
+    performExpensiveUpdate();
+    updateCooldown = UPDATE_FREQUENCY;
+}
+```
+
+### Caching
+
+```java
+private final Map<Integer, ItemComposition> itemCache = new HashMap<>();
+private final Map<Integer, ObjectComposition> objectCache = new HashMap<>();
+
+private ItemComposition getItemComposition(int itemId) {
+    return itemCache.computeIfAbsent(itemId, client::getItemDefinition);
+}
+
+private ObjectComposition getObjectComposition(int objectId) {
+    return objectCache.computeIfAbsent(objectId, client::getObjectDefinition);
+}
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Events Overview" icon="bolt" href="/api/events-overview">
+    Event system overview
+  </Card>
+  <Card title="Event Types" icon="list" href="/api/event-types">
+    Common event types
+  </Card>
+</CardGroup>

@@ -1,0 +1,544 @@
+---
+title: Deobfuscation
+description: Understand how RuneLite handles the obfuscated OSRS client
+---
+
+## Overview
+
+Old School RuneScape's client is heavily obfuscated with short, meaningless names (like `aa`, `ab`, `ac`) that change with every game update. RuneLite uses a sophisticated system to map these obfuscated names to meaningful API names, allowing plugins to work across game updates.
+
+## The Deobfuscation Pipeline
+
+RuneLite's deobfuscation process involves several stages:
+
+1. **Deobfuscator**: Analyzes the vanilla client JAR to identify classes, methods, and fields
+2. **Mapping Generation**: Creates mappings from obfuscated names to deobfuscated names
+3. **Injector**: Applies transformations to the client and injects hooks
+4. **API Generation**: Creates the `runelite-api` interfaces that mirror the client structure
+5. **Mixins**: Runtime bytecode modification for adding functionality
+
+<Info>
+The deobfuscation process is run by the RuneLite team after each OSRS update. Plugin developers work with the stable deobfuscated API.
+</Info>
+
+## API Layer Architecture
+
+### Interface-Based Design
+
+RuneLite uses interfaces to decouple plugins from the obfuscated client:
+
+```java
+// Plugin code uses clean interfaces
+import net.runelite.api.Client;
+import net.runelite.api.Player;
+import net.runelite.api.Item;
+
+@Inject
+private Client client;
+
+public void doSomething()
+{
+    Player localPlayer = client.getLocalPlayer();
+    String name = localPlayer.getName();
+    int combatLevel = localPlayer.getCombatLevel();
+}
+```
+
+Behind the scenes, these interfaces are implemented by the obfuscated client classes through injected getters and setters.
+
+### Callbacks System
+
+The injector adds callback hooks throughout the client to notify RuneLite of game events:
+
+```java
+// From Callbacks.java:40-47
+public interface Callbacks
+{
+    /**
+     * Post an event. See the events in net.runelite.api.events.
+     */
+    void post(Object event);
+    
+    /**
+     * Post a deferred event, which gets delayed until the next cycle.
+     */
+    void postDeferred(Object event);
+    
+    /**
+     * Called at the beginning of each tick
+     */
+    void tick();
+    
+    /**
+     * Called at the end of each tick
+     */
+    void tickEnd();
+    
+    /**
+     * Called each frame
+     */
+    void frame();
+}
+```
+
+These callbacks are injected into strategic points in the game client:
+
+- **Game tick**: Start and end of each game cycle (600ms)
+- **Frame rendering**: Every time the scene is drawn
+- **Input events**: Mouse and keyboard interactions
+- **Network packets**: When data is sent/received from the server
+
+## Mapping System
+
+### Obfuscated to Deobfuscated
+
+The deobfuscator generates mappings that look like:
+
+```
+class: aa -> Player
+  field: ac I -> combatLevel
+  method: ab ()Ljava/lang/String; -> getName
+  method: ad (I)V -> setAnimation
+```
+
+These mappings are used during the injection process to:
+- Add interface implementations to obfuscated classes
+- Generate getter/setter methods with clean names
+- Inject callback hooks at specific code locations
+
+### Field and Method Hooks
+
+The injector generates code like:
+
+```java
+// Original obfuscated client class
+class aa // Obfuscated Player class
+{
+    int ac; // Obfuscated combatLevel field
+    
+    String ab() // Obfuscated getName method
+    {
+        return this.name;
+    }
+}
+
+// After injection
+class aa implements net.runelite.api.Player
+{
+    int ac;
+    
+    String ab()
+    {
+        return this.name;
+    }
+    
+    // Injected getter
+    @Override
+    public int getCombatLevel()
+    {
+        return this.ac * -1234567; // Decoder for obfuscated multiplier
+    }
+    
+    // Injected getter
+    @Override
+    public String getName()
+    {
+        return this.ab();
+    }
+}
+```
+
+<Note>
+Many numeric fields are multiplied by random values to prevent cheating. The injector automatically decodes these values.
+</Note>
+
+## Garbage Values and Encoders
+
+### Obfuscated Multipliers
+
+Jagex multiplies numeric fields by random "garbage" values:
+
+```java
+// Obfuscated client stores this:
+int encodedHealth = actualHealth * 1234567890;
+
+// RuneLite API decodes it:
+public int getHealth()
+{
+    return this.obfuscatedHealthField * -1055980633; // Inverse multiplier
+}
+```
+
+The deobfuscator automatically detects these multipliers by analyzing the bytecode and includes the inverse in the mapping.
+
+### Array Indexing
+
+Some arrays use non-standard indexing:
+
+```java
+// Instead of array[index], the obfuscated client might use:
+value = array[(index * 12345 + 67890) & mask];
+
+// The API hides this complexity:
+public Item getItem(int slot)
+{
+    int obfuscatedIndex = (slot * encodingMultiplier + encodingOffset) & mask;
+    return itemArray[obfuscatedIndex];
+}
+```
+
+## Event Injection
+
+RuneLite injects event hooks at key locations:
+
+### Example: Item Despawn Event
+
+```java
+// Obfuscated client code:
+void removeGroundItem(int id, int x, int y)
+{
+    // Remove item from scene
+    // ... obfuscated removal logic ...
+}
+
+// After injection:
+void removeGroundItem(int id, int x, int y)
+{
+    // Injected callback
+    ItemDespawned event = new ItemDespawned();
+    event.setItem(new TileItem(id, 1));
+    event.setTile(scene.getTiles()[plane][x][y]);
+    client.getCallbacks().post(event);
+    
+    // Original obfuscated removal logic
+    // ... obfuscated removal logic ...
+}
+```
+
+### Event Types
+
+Common injected events include:
+
+- **GameTick**: Posted every game cycle
+- **AnimationChanged**: When an actor's animation changes
+- **ChatMessage**: When a chat message appears
+- **ItemContainerChanged**: When inventory or equipment updates
+- **MenuOptionClicked**: When a menu option is selected
+- **WidgetLoaded**: When an interface opens
+- **GraphicsObjectCreated**: When a graphics object spawns
+
+## Working with the Deobfuscated API
+
+### Accessing Game State
+
+```java
+import net.runelite.api.*;
+import net.runelite.api.widgets.Widget;
+import net.runelite.api.widgets.WidgetInfo;
+import javax.inject.Inject;
+
+public class GameStateExample
+{
+    @Inject
+    private Client client;
+    
+    public void examineGameState()
+    {
+        // Player information
+        Player local = client.getLocalPlayer();
+        if (local != null)
+        {
+            WorldPoint location = local.getWorldLocation();
+            int health = client.getBoostedSkillLevel(Skill.HITPOINTS);
+            int prayer = client.getBoostedSkillLevel(Skill.PRAYER);
+            
+            System.out.println("Location: " + location);
+            System.out.println("Health: " + health);
+            System.out.println("Prayer: " + prayer);
+        }
+        
+        // NPC information
+        for (NPC npc : client.getNpcs())
+        {
+            if (npc.getName() != null && npc.getName().equals("Guard"))
+            {
+                System.out.println("Found guard at: " + npc.getWorldLocation());
+                System.out.println("Health ratio: " + npc.getHealthRatio());
+            }
+        }
+        
+        // Widget information
+        Widget chatbox = client.getWidget(WidgetInfo.CHATBOX_MESSAGE_LINES);
+        if (chatbox != null)
+        {
+            System.out.println("Chatbox visible: " + !chatbox.isHidden());
+        }
+        
+        // Item container information
+        ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
+        if (inventory != null)
+        {
+            for (Item item : inventory.getItems())
+            {
+                if (item.getId() != -1)
+                {
+                    System.out.println("Inventory: " + item.getId() + " x" + item.getQuantity());
+                }
+            }
+        }
+    }
+}
+```
+
+### Understanding IDs
+
+Many game entities use numeric IDs:
+
+```java
+// Item IDs are stable across updates
+if (item.getId() == ItemID.ABYSSAL_WHIP)
+{
+    System.out.println("Found a whip!");
+}
+
+// NPC IDs are also stable
+if (npc.getId() == NpcID.GENERAL_GRAARDOR)
+{
+    System.out.println("Found the general!");
+}
+
+// Object IDs for world objects
+if (gameObject.getId() == ObjectID.BANK_BOOTH)
+{
+    System.out.println("Found a bank!");
+}
+```
+
+<Warning>
+Widget IDs and component IDs can change between game updates. Use `WidgetInfo` constants when available, or add null checks and validation.
+</Warning>
+
+## API Limitations
+
+### Read-Only vs Read-Write
+
+Most API methods are read-only getters:
+
+```java
+// ✓ Reading game state is safe
+int health = client.getBoostedSkillLevel(Skill.HITPOINTS);
+String name = player.getName();
+
+// ✗ Direct modification is limited
+// You cannot directly modify most game state
+player.setAnimation(1234); // This works for some fields
+client.setEnergy(100);      // But most setters are restricted
+```
+
+RuneLite intentionally limits write access to prevent botting and maintain game integrity.
+
+### Server Authority
+
+The server is authoritative for most game state:
+
+```java
+// Client-side changes are often overwritten by the server
+client.setVarbitValue(varbitId, value); // Works temporarily
+// But the server will correct it on the next update
+```
+
+Only use setters for:
+- Client-only rendering changes
+- Temporary modifications that get reset
+- Testing and debugging purposes
+
+## Handling Game Updates
+
+### Update Process
+
+When OSRS updates:
+
+1. **Obfuscation changes**: All class/method/field names shuffle
+2. **RuneLite team remaps**: Deobfuscator runs on new client
+3. **Injector rebuilds**: New injected client generated
+4. **API remains stable**: Plugin code doesn't need changes
+
+<Info>
+Plugins using the RuneLite API typically work immediately after updates. Only plugins using internal/obfuscated code need fixing.
+</Info>
+
+### API Stability Guarantees
+
+The `net.runelite.api` package maintains stability:
+
+```java
+// ✓ Stable - will work across updates
+import net.runelite.api.Client;
+import net.runelite.api.Player;
+import net.runelite.api.events.GameTick;
+
+// ✗ Unstable - may break on updates
+import net.runelite.client.plugins.PluginManager; // Internal RuneLite class
+import ab; // Obfuscated game class
+```
+
+### Mixin System
+
+For advanced modifications, RuneLite uses mixins to inject code at runtime:
+
+```java
+// Example conceptual mixin (simplified)
+@Mixin(Client.class)
+public abstract class ClientMixin implements RSClient
+{
+    @Inject(method = "drawScene", at = @At("RETURN"))
+    private void onDrawScene()
+    {
+        // Code injected after scene rendering
+        getCallbacks().drawScene();
+    }
+}
+```
+
+Mixins allow:
+- Adding new methods to existing classes
+- Wrapping existing methods with pre/post logic
+- Modifying method behavior without rewriting code
+
+## Debugging Techniques
+
+### Using Reflection
+
+When the API doesn't expose something:
+
+```java
+import net.runelite.api.Client;
+import java.lang.reflect.Field;
+
+public void readObfuscatedField(Client client)
+{
+    try
+    {
+        // Access obfuscated field directly
+        Field field = client.getClass().getDeclaredField("ab");
+        field.setAccessible(true);
+        int value = (int) field.get(client);
+        System.out.println("Obfuscated field value: " + value);
+    }
+    catch (Exception e)
+    {
+        e.printStackTrace();
+    }
+}
+```
+
+<Warning>
+Using reflection on obfuscated fields will break when the game updates. Only use for temporary debugging.
+</Warning>
+
+### Logging Events
+
+Monitor what events fire:
+
+```java
+import net.runelite.client.eventbus.Subscribe;
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
+public class EventLogger
+{
+    @Subscribe
+    public void onGameTick(GameTick event)
+    {
+        log.debug("Game tick occurred");
+    }
+    
+    @Subscribe
+    public void onChatMessage(ChatMessage event)
+    {
+        log.debug("Chat message: type={}, message={}", 
+            event.getType(), event.getMessage());
+    }
+    
+    @Subscribe
+    public void onMenuOptionClicked(MenuOptionClicked event)
+    {
+        log.debug("Menu option: option={}, target={}, id={}",
+            event.getMenuOption(), event.getMenuTarget(), event.getId());
+    }
+}
+```
+
+## Performance Considerations
+
+### Efficient API Usage
+
+```java
+// ✗ Inefficient - repeated lookups
+public void badExample()
+{
+    for (int i = 0; i < 100; i++)
+    {
+        if (client.getLocalPlayer().getWorldLocation().getX() > 3000)
+        {
+            // ...
+        }
+    }
+}
+
+// ✓ Efficient - cache results
+public void goodExample()
+{
+    Player local = client.getLocalPlayer();
+    if (local == null) return;
+    
+    WorldPoint location = local.getWorldLocation();
+    int x = location.getX();
+    
+    for (int i = 0; i < 100; i++)
+    {
+        if (x > 3000)
+        {
+            // ...
+        }
+    }
+}
+```
+
+### Avoid Heavy Operations
+
+Some API calls are expensive:
+
+```java
+// Expensive - iterates all scene tiles
+client.getPlane();
+client.getScene().getTiles();
+
+// Expensive - creates new objects
+client.createProjectile(...);
+
+// Expensive - complex calculations
+perspective.worldToCanvas(...);
+perspective.localToCanvas(...);
+```
+
+Cache results when possible and avoid calling in tight loops.
+
+## Best Practices
+
+<Card title="Working with Deobfuscated API">
+- Always use `net.runelite.api` interfaces, never obfuscated classes directly
+- Check for null - many API methods can return null
+- Use constant classes (ItemID, NpcID, ObjectID) for IDs
+- Subscribe to events rather than polling game state
+- Cache API results when calling repeatedly
+- Test plugins across game updates to ensure stability
+- Avoid reflection on obfuscated fields in production code
+</Card>
+
+## Related Topics
+
+- [Plugin Development](/guides/plugin-development)
+- [Event System](/api/events)
+- [Performance Optimization](/advanced/performance)
+- [Cache Library](/advanced/cache-library)

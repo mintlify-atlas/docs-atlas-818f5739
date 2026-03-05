@@ -1,0 +1,522 @@
+---
+title: 'Item and ItemComposition'
+description: 'Item class and ItemComposition interface for item data'
+---
+
+The `Item` class represents an item instance with an ID and quantity, while `ItemComposition` provides detailed information about item types.
+
+## Item Class
+
+The `Item` class is a simple value class containing:
+
+```java
+public class Item {
+    private final int id;
+    private final int quantity;
+}
+```
+
+### Creating Items
+
+```java
+Item item = new Item(ItemID.ABYSSAL_WHIP, 1);
+int id = item.getId();
+int quantity = item.getQuantity();
+```
+
+### Getting Items
+
+Items are typically obtained from item containers:
+
+```java
+ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
+if (inventory != null) {
+    Item[] items = inventory.getItems();
+    for (Item item : items) {
+        if (item.getId() != -1) { // -1 = empty slot
+            int id = item.getId();
+            int qty = item.getQuantity();
+            // Process item
+        }
+    }
+}
+```
+
+## ItemComposition
+
+`ItemComposition` provides detailed information about an item type:
+
+### getItemDefinition
+
+<ParamField path="id" type="int" required>
+  The item ID
+</ParamField>
+
+<ParamField path="Returns" type="ItemComposition">
+  The item composition
+</ParamField>
+
+Gets the composition for an item ID:
+
+```java
+ItemComposition comp = client.getItemDefinition(ItemID.ABYSSAL_WHIP);
+```
+
+## Basic Properties
+
+### getName
+
+<ParamField path="Returns" type="String">
+  The item name
+</ParamField>
+
+Gets the item's name as it appears in game.
+
+```java
+String name = itemComp.getName();
+// On F2P servers, members items will have " (Members)" appended
+```
+
+### getMembersName
+
+<ParamField path="Returns" type="String">
+  The real item name
+</ParamField>
+
+Gets the real item name without the " (Members)" suffix.
+
+```java
+String realName = itemComp.getMembersName();
+// Always returns the actual name, even on F2P servers
+```
+
+### getId
+
+<ParamField path="Returns" type="int">
+  The item ID
+</ParamField>
+
+Gets the item's ID.
+
+```java
+int itemId = itemComp.getId();
+```
+
+### isMembers
+
+<ParamField path="Returns" type="boolean">
+  True if members only
+</ParamField>
+
+Checks whether the item is members only.
+
+```java
+if (itemComp.isMembers()) {
+    // This is a members item
+}
+```
+
+## Item Values
+
+### getPrice
+
+<ParamField path="Returns" type="int">
+  The general store value
+</ParamField>
+
+Gets the store price of the item.
+
+```java
+int storePrice = itemComp.getPrice();
+
+// Calculate alchemy values
+int highAlchValue = (int)(storePrice * Constants.HIGH_ALCHEMY_MULTIPLIER);
+int lowAlchValue = (int)(storePrice * 0.4);
+```
+
+### getHaPrice
+
+<ParamField path="Returns" type="int">
+  The high alchemy price
+</ParamField>
+
+Gets the high alchemy price for this item.
+
+```java
+int highAlch = itemComp.getHaPrice();
+log.info("High alch value: " + highAlch);
+```
+
+## Item Properties
+
+### isStackable
+
+<ParamField path="Returns" type="boolean">
+  True if stackable
+</ParamField>
+
+Checks whether the item can stack in inventory.
+
+```java
+if (itemComp.isStackable()) {
+    // Item stacks (coins, runes, etc.)
+}
+```
+
+### isTradeable
+
+<ParamField path="Returns" type="boolean">
+  True if tradeable on GE
+</ParamField>
+
+Checks whether the item can be sold on the Grand Exchange.
+
+```java
+if (itemComp.isTradeable()) {
+    // Item can be traded on GE
+}
+```
+
+### isEquipable
+
+<ParamField path="Returns" type="int">
+  Equipment slot, or -1 if not equipable
+</ParamField>
+
+Checks whether the item is equipable and returns the equipment slot.
+
+```java
+int slot = itemComp.isEquipable();
+if (slot != -1) {
+    // Item can be equipped
+    if (slot == EquipmentInventorySlot.WEAPON.getSlotIdx()) {
+        // This is a weapon
+    }
+}
+```
+
+## Item Actions
+
+### getInventoryActions
+
+<ParamField path="Returns" type="String[]">
+  Array of inventory actions
+</ParamField>
+
+Gets possible right-click menu actions in inventory.
+
+```java
+String[] actions = itemComp.getInventoryActions();
+for (int i = 0; i < actions.length; i++) {
+    String action = actions[i];
+    if (action != null) {
+        log.info("Action " + i + ": " + action);
+        // e.g., "Wield", "Eat", "Drop"
+    }
+}
+
+// Check for specific action
+List<String> actionsList = Arrays.asList(actions);
+if (actionsList.contains("Eat")) {
+    // This is a food item
+}
+```
+
+## Notes and Placeholders
+
+### getNote
+
+<ParamField path="Returns" type="int">
+  799 if noted, -1 otherwise
+</ParamField>
+
+Checks whether the item is noted.
+
+```java
+boolean isNoted = itemComp.getNote() == 799;
+if (isNoted) {
+    // This is a noted item
+}
+```
+
+### getLinkedNoteId
+
+<ParamField path="Returns" type="int">
+  The noted or unnoted variant ID
+</ParamField>
+
+Gets the ID of the noted/unnoted variant.
+
+```java
+int variantId = itemComp.getLinkedNoteId();
+// If noted, returns unnoted ID
+// If unnoted, returns noted ID
+
+ItemComposition variant = client.getItemDefinition(variantId);
+```
+
+### getPlaceholderId
+
+<ParamField path="Returns" type="int">
+  The normal or placeholder variant ID
+</ParamField>
+
+Gets the ID of the normal/placeholder variant.
+
+```java
+int placeholderId = itemComp.getPlaceholderId();
+ItemComposition placeholder = client.getItemDefinition(placeholderId);
+```
+
+### getPlaceholderTemplateId
+
+<ParamField path="Returns" type="int">
+  14401 if placeholder, -1 otherwise
+</ParamField>
+
+Checks whether the item is a placeholder.
+
+```java
+boolean isPlaceholder = itemComp.getPlaceholderTemplateId() == 14401;
+```
+
+## Shift-Click Actions
+
+### getShiftClickActionIndex
+
+<ParamField path="Returns" type="int">
+  The shift-click action index
+</ParamField>
+
+Gets the shift-click action index for this item.
+
+```java
+int shiftClickIndex = itemComp.getShiftClickActionIndex();
+if (shiftClickIndex >= 0) {
+    String[] actions = itemComp.getInventoryActions();
+    String shiftClickAction = actions[shiftClickIndex];
+    log.info("Shift-click action: " + shiftClickAction);
+}
+```
+
+### setShiftClickActionIndex
+
+<ParamField path="index" type="int" required>
+  The action index to use for shift-click
+</ParamField>
+
+Sets the shift-click action index.
+
+```java
+// Set shift-click to "Drop"
+String[] actions = itemComp.getInventoryActions();
+for (int i = 0; i < actions.length; i++) {
+    if ("Drop".equals(actions[i])) {
+        itemComp.setShiftClickActionIndex(i);
+        break;
+    }
+}
+```
+
+## Parameters
+
+### getIntValue
+
+<ParamField path="paramID" type="int" required>
+  The parameter ID
+</ParamField>
+
+<ParamField path="Returns" type="int">
+  The parameter value
+</ParamField>
+
+Gets an integer parameter value.
+
+```java
+int bonusParam = itemComp.getIntValue(ParamID.SOME_PARAM);
+```
+
+### getStringValue
+
+<ParamField path="paramID" type="int" required>
+  The parameter ID
+</ParamField>
+
+<ParamField path="Returns" type="String">
+  The parameter value
+</ParamField>
+
+Gets a string parameter value.
+
+```java
+String description = itemComp.getStringValue(ParamID.SOME_STRING_PARAM);
+```
+
+## Item Sprites
+
+### createItemSprite
+
+Create a sprite image of an item:
+
+```java
+SpritePixels sprite = client.createItemSprite(
+    ItemID.ABYSSAL_WHIP, // item ID
+    1,                    // quantity
+    1,                    // border (0 or 1)
+    0,                    // shadow color
+    0,                    // stackable mode
+    false,                // noted
+    1                     // scale
+);
+
+if (sprite != null) {
+    BufferedImage image = sprite.toBufferedImage();
+    // Use the image
+}
+```
+
+## Example: Item Scanner
+
+```java
+public void scanInventory() {
+    ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
+    if (inventory == null) return;
+    
+    int totalValue = 0;
+    List<Item> foodItems = new ArrayList<>();
+    
+    for (Item item : inventory.getItems()) {
+        if (item.getId() == -1) continue;
+        
+        ItemComposition comp = client.getItemDefinition(item.getId());
+        
+        // Calculate value
+        int itemValue = comp.getPrice() * item.getQuantity();
+        totalValue += itemValue;
+        
+        // Find food items
+        String[] actions = comp.getInventoryActions();
+        if (Arrays.asList(actions).contains("Eat")) {
+            foodItems.add(item);
+        }
+        
+        // Log item info
+        log.info("Item: " + comp.getName() + 
+                 " x" + item.getQuantity() +
+                 " (" + itemValue + " gp)");
+    }
+    
+    log.info("Total inventory value: " + totalValue + " gp");
+    log.info("Food items: " + foodItems.size());
+}
+```
+
+## Example: Item Filter
+
+```java
+public List<Item> getItemsMatching(Predicate<ItemComposition> filter) {
+    ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
+    if (inventory == null) return Collections.emptyList();
+    
+    List<Item> matches = new ArrayList<>();
+    
+    for (Item item : inventory.getItems()) {
+        if (item.getId() == -1) continue;
+        
+        ItemComposition comp = client.getItemDefinition(item.getId());
+        if (filter.test(comp)) {
+            matches.add(item);
+        }
+    }
+    
+    return matches;
+}
+
+// Usage examples:
+// Get all members items
+List<Item> membersItems = getItemsMatching(ItemComposition::isMembers);
+
+// Get all stackable items
+List<Item> stackableItems = getItemsMatching(ItemComposition::isStackable);
+
+// Get all tradeable items
+List<Item> tradeableItems = getItemsMatching(ItemComposition::isTradeable);
+
+// Get items worth more than 1000 gp
+List<Item> expensiveItems = getItemsMatching(
+    comp -> comp.getPrice() > 1000
+);
+
+// Get equipable items
+List<Item> equipment = getItemsMatching(
+    comp -> comp.isEquipable() != -1
+);
+```
+
+## Example: Item Name Lookup
+
+```java
+public int findItemIdByName(String name) {
+    // Note: This is not efficient for large searches
+    // Consider caching or using a dedicated service
+    
+    int maxItemId = client.getItemCount();
+    for (int id = 0; id < maxItemId; id++) {
+        ItemComposition comp = client.getItemDefinition(id);
+        if (name.equalsIgnoreCase(comp.getName())) {
+            return id;
+        }
+    }
+    return -1;
+}
+
+public List<Integer> findItemIdsByNameContains(String search) {
+    List<Integer> results = new ArrayList<>();
+    int maxItemId = client.getItemCount();
+    
+    for (int id = 0; id < maxItemId; id++) {
+        ItemComposition comp = client.getItemDefinition(id);
+        String name = comp.getName();
+        if (name != null && name.toLowerCase().contains(search.toLowerCase())) {
+            results.add(id);
+        }
+    }
+    
+    return results;
+}
+```
+
+## Item Events
+
+### ItemContainerChanged
+
+```java
+@Subscribe
+public void onItemContainerChanged(ItemContainerChanged event) {
+    ItemContainer container = event.getItemContainer();
+    int containerId = event.getContainerId();
+    
+    if (containerId == InventoryID.INVENTORY.getId()) {
+        // Inventory changed
+        Item[] items = container.getItems();
+        processInventoryChange(items);
+    }
+}
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Inventory" icon="backpack" href="/api/inventory">
+    ItemContainer and inventory management
+  </Card>
+  <Card title="Client" icon="computer" href="/api/client">
+    Client interface
+  </Card>
+  <Card title="Events" icon="bolt" href="/api/event-types">
+    Item events
+  </Card>
+  <Card title="Constants" icon="hashtag" href="/api/constants">
+    ItemID constants
+  </Card>
+</CardGroup>

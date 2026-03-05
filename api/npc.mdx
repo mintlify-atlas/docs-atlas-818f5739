@@ -1,0 +1,548 @@
+---
+title: 'NPC Interface'
+description: 'Non-player character interface for interacting with NPCs'
+---
+
+The `NPC` interface represents a non-player character in the game. It extends the `Actor` interface and provides NPC-specific functionality.
+
+## Getting NPCs
+
+### All NPCs
+
+Get all NPCs in the current world view:
+
+```java
+WorldView worldView = client.getTopLevelWorldView();
+for (NPC npc : worldView.npcs()) {
+    if (npc != null) {
+        String name = npc.getName();
+        int id = npc.getId();
+        // Process NPC
+    }
+}
+```
+
+### Finding Specific NPCs
+
+```java
+// Find NPCs by name
+List<NPC> goblins = new ArrayList<>();
+for (NPC npc : worldView.npcs()) {
+    if (npc != null && "Goblin".equals(npc.getName())) {
+        goblins.add(npc);
+    }
+}
+
+// Find NPC by ID
+for (NPC npc : worldView.npcs()) {
+    if (npc != null && npc.getId() == NpcID.HANS) {
+        // Found Hans
+        break;
+    }
+}
+```
+
+## NPC Identification
+
+### getId
+
+<ParamField path="Returns" type="int">
+  The NPC ID
+</ParamField>
+
+Gets the ID of the NPC.
+
+```java
+int npcId = npc.getId();
+if (npcId == NpcID.COMBAT_DUMMY) {
+    // This is a combat dummy
+}
+```
+
+<Note>
+  NPC IDs are defined in the `NpcID` class. The ID may change based on transformations.
+</Note>
+
+### getName
+
+<ParamField path="Returns" type="String" nullable>
+  The NPC's name
+</ParamField>
+
+Gets the name of the NPC.
+
+```java
+String name = npc.getName();
+if (name != null && name.equals("Guard")) {
+    // This is a Guard NPC
+}
+```
+
+### getIndex
+
+<ParamField path="Returns" type="int">
+  The NPC index
+</ParamField>
+
+Gets the index position of this NPC in the client's cached NPC array.
+
+```java
+int index = npc.getIndex();
+// Useful for tracking NPCs across ticks
+```
+
+### getCombatLevel
+
+<ParamField path="Returns" type="int">
+  The combat level
+</ParamField>
+
+Gets the combat level of the NPC.
+
+```java
+int combatLevel = npc.getCombatLevel();
+if (combatLevel > 100) {
+    // High level NPC
+}
+```
+
+## NPC Composition
+
+### getComposition
+
+<ParamField path="Returns" type="NPCComposition" nullable>
+  The NPC composition
+</ParamField>
+
+Gets the composition (definition) of this NPC.
+
+```java
+NPCComposition composition = npc.getComposition();
+if (composition != null) {
+    String name = composition.getName();
+    String[] actions = composition.getActions();
+    int size = composition.getSize();
+    boolean isInteractible = composition.isInteractible();
+}
+```
+
+<Expandable title="NPCComposition Details">
+  The `NPCComposition` provides access to:
+  - NPC name
+  - Available actions (Attack, Talk, Trade, etc.)
+  - Size (in tiles)
+  - Combat level
+  - Models and colors
+  - Transformations
+  
+  ```java
+  NPCComposition comp = npc.getComposition();
+  
+  // Get actions
+  String[] actions = comp.getActions();
+  for (int i = 0; i < actions.length; i++) {
+      String action = actions[i];
+      if (action != null) {
+          log.info("Action " + i + ": " + action);
+      }
+  }
+  
+  // Check if NPC is attackable
+  if (Arrays.asList(actions).contains("Attack")) {
+      // NPC can be attacked
+  }
+  
+  // Get size
+  int size = comp.getSize(); // Tiles (e.g., 1 for most NPCs, 5 for bosses)
+  ```
+</Expandable>
+
+### getTransformedComposition
+
+<ParamField path="Returns" type="NPCComposition" nullable>
+  The transformed NPC composition
+</ParamField>
+
+Gets the composition for this NPC and transforms it if required (e.g., NPC morphing based on variables).
+
+```java
+NPCComposition transformedComp = npc.getTransformedComposition();
+if (transformedComp != null) {
+    // This accounts for NPC transformations
+    String actualName = transformedComp.getName();
+}
+```
+
+## Model Overrides
+
+### getModelOverrides
+
+<ParamField path="Returns" type="NpcOverrides" nullable>
+  Model overrides for the NPC
+</ParamField>
+
+Gets the model overrides for this NPC.
+
+```java
+NpcOverrides overrides = npc.getModelOverrides();
+if (overrides != null) {
+    // NPC has custom model overrides
+}
+```
+
+### getChatheadOverrides
+
+<ParamField path="Returns" type="NpcOverrides" nullable>
+  Chathead model overrides
+</ParamField>
+
+Gets the chathead overrides for this NPC.
+
+```java
+NpcOverrides chatheadOverrides = npc.getChatheadOverrides();
+```
+
+## Overhead Icons
+
+### getOverheadArchiveIds
+
+<ParamField path="Returns" type="int[]" nullable>
+  Array of archive IDs for overhead icons
+</ParamField>
+
+Gets the array of overhead icon archive IDs. Used with `getOverheadSpriteIds()` to determine which icons are rendered overhead.
+
+```java
+int[] archiveIds = npc.getOverheadArchiveIds();
+int[] spriteIds = npc.getOverheadSpriteIds();
+
+if (archiveIds != null && spriteIds != null) {
+    for (int i = 0; i < archiveIds.length; i++) {
+        if (archiveIds[i] != -1) {
+            // NPC has overhead icon at index i
+            int archiveId = archiveIds[i];
+            int spriteId = spriteIds[i];
+        }
+    }
+}
+```
+
+### getOverheadSpriteIds
+
+<ParamField path="Returns" type="short[]" nullable>
+  Array of sprite IDs for overhead icons
+</ParamField>
+
+Gets the array of overhead icon sprite indexes.
+
+## Actor Properties (Inherited)
+
+As `NPC` extends `Actor`, all actor methods are available:
+
+### Location
+
+```java
+// World location (server-side position)
+WorldPoint worldLocation = npc.getWorldLocation();
+
+// Local location (client render position)  
+LocalPoint localLocation = npc.getLocalLocation();
+
+// World area (important for multi-tile NPCs)
+WorldArea area = npc.getWorldArea();
+int width = area.getWidth();
+int height = area.getHeight();
+```
+
+### Animation
+
+```java
+// Current animation
+int animationId = npc.getAnimation();
+if (animationId == AnimationID.SOME_ATTACK) {
+    // NPC is attacking
+}
+
+// Get animation frame
+int frame = npc.getAnimationFrame();
+```
+
+### Interaction
+
+```java
+// Check if NPC is interacting with something
+if (npc.isInteracting()) {
+    Actor target = npc.getInteracting();
+    if (target == client.getLocalPlayer()) {
+        // NPC is targeting the local player
+        log.warn("NPC is attacking you!");
+    }
+}
+```
+
+### Health
+
+```java
+// Get health ratio (not exact HP)
+int healthRatio = npc.getHealthRatio();
+int healthScale = npc.getHealthScale();
+
+if (healthRatio > 0 && healthScale > 0) {
+    double healthPercent = (double) healthRatio / healthScale * 100;
+    log.info("NPC health: ~" + (int)healthPercent + "%");
+}
+```
+
+### Orientation
+
+```java
+// Get orientation (direction NPC is facing)
+int orientation = npc.getOrientation();
+// Orientation is in JAU (Jagex Angle Units)
+// 0 = South, 512 = West, 1024 = North, 1536 = East
+```
+
+### Graphics/Spotanims
+
+```java
+// Check for spotanim
+if (npc.hasSpotAnim(GraphicID.FREEZE)) {
+    // NPC is frozen
+}
+
+// Get all spotanims
+IterableHashTable<ActorSpotAnim> spotAnims = npc.getSpotAnims();
+for (ActorSpotAnim spotAnim : spotAnims) {
+    int spotAnimId = spotAnim.getId();
+    // Process spotanim
+}
+```
+
+### Overhead Text
+
+```java
+// Get overhead text
+String overheadText = npc.getOverheadText();
+if (overheadText != null && !overheadText.isEmpty()) {
+    // NPC has overhead text (e.g., dialogue)
+}
+```
+
+## Canvas Rendering
+
+### getCanvasTilePoly
+
+<ParamField path="Returns" type="Polygon" nullable>
+  Polygon representing the NPC's tile(s) on screen
+</ParamField>
+
+Gets the canvas area of the tiles the NPC is standing on.
+
+```java
+Polygon tilePoly = npc.getCanvasTilePoly();
+if (tilePoly != null) {
+    graphics.setColor(Color.YELLOW);
+    graphics.draw(tilePoly);
+}
+```
+
+### getConvexHull
+
+<ParamField path="Returns" type="Shape" nullable>
+  The convex hull of the NPC's model
+</ParamField>
+
+Gets the convex hull of the NPC's model.
+
+```java
+Shape hull = npc.getConvexHull();
+if (hull != null) {
+    graphics.setColor(new Color(255, 0, 0, 100));
+    graphics.fill(hull);
+}
+```
+
+### getCanvasTextLocation
+
+<ParamField path="graphics" type="Graphics2D" required>
+  Graphics context
+</ParamField>
+
+<ParamField path="text" type="String" required>
+  Text to draw
+</ParamField>
+
+<ParamField path="heightOffset" type="int" required>
+  Z-axis offset
+</ParamField>
+
+<ParamField path="Returns" type="Point" nullable>
+  Canvas location for text
+</ParamField>
+
+Gets the point to draw text above the NPC.
+
+```java
+NPCComposition comp = npc.getComposition();
+if (comp != null) {
+    String name = comp.getName();
+    int height = comp.getSize() * 64 + 60; // Adjust for NPC size
+    Point textLoc = npc.getCanvasTextLocation(graphics, name, height);
+    if (textLoc != null) {
+        graphics.drawString(name, textLoc.getX(), textLoc.getY());
+    }
+}
+```
+
+### getMinimapLocation
+
+<ParamField path="Returns" type="Point" nullable>
+  Minimap location
+</ParamField>
+
+Gets the minimap location for the NPC.
+
+```java
+Point minimapLoc = npc.getMinimapLocation();
+if (minimapLoc != null) {
+    // Draw on minimap
+}
+```
+
+## Example: NPC Indicator Plugin
+
+```java
+private final Set<NPC> highlightedNpcs = new HashSet<>();
+
+@Subscribe
+public void onNpcSpawned(NpcSpawned event) {
+    NPC npc = event.getNpc();
+    
+    // Highlight specific NPCs
+    if (shouldHighlight(npc)) {
+        highlightedNpcs.add(npc);
+        log.info("Highlighted NPC spawned: " + npc.getName());
+    }
+}
+
+@Subscribe
+public void onNpcDespawned(NpcDespawned event) {
+    highlightedNpcs.remove(event.getNpc());
+}
+
+private boolean shouldHighlight(NPC npc) {
+    // Example: highlight by name
+    String name = npc.getName();
+    if (name != null && name.contains("Banker")) {
+        return true;
+    }
+    
+    // Example: highlight by ID
+    int id = npc.getId();
+    if (id == NpcID.ZULRAH) {
+        return true;
+    }
+    
+    // Example: highlight by combat level
+    int combatLevel = npc.getCombatLevel();
+    if (combatLevel > 200) {
+        return true;
+    }
+    
+    return false;
+}
+
+@Subscribe
+public void onGameTick(GameTick event) {
+    // Check NPC states each tick
+    for (NPC npc : highlightedNpcs) {
+        if (npc.isInteracting()) {
+            Actor target = npc.getInteracting();
+            if (target == client.getLocalPlayer()) {
+                // NPC is targeting player
+            }
+        }
+        
+        // Check animation
+        int anim = npc.getAnimation();
+        if (anim != -1) {
+            // NPC is animating
+        }
+    }
+}
+
+@Subscribe
+public void onNpcChanged(NpcChanged event) {
+    NPC npc = event.getNpc();
+    // NPC transformed into different NPC
+    log.info("NPC changed: " + npc.getOld() + " -> " + npc.getNpc());
+}
+```
+
+## Example: Drawing NPC Information
+
+```java
+@Override
+public Dimension render(Graphics2D graphics) {
+    WorldView worldView = client.getTopLevelWorldView();
+    
+    for (NPC npc : worldView.npcs()) {
+        if (npc == null) continue;
+        
+        // Get NPC composition
+        NPCComposition comp = npc.getComposition();
+        if (comp == null) continue;
+        
+        // Build info text
+        StringBuilder info = new StringBuilder();
+        info.append(comp.getName());
+        info.append(" (Lvl ").append(comp.getCombatLevel()).append(")");
+        
+        // Add health if available
+        int healthRatio = npc.getHealthRatio();
+        int healthScale = npc.getHealthScale();
+        if (healthRatio > 0 && healthScale > 0) {
+            int healthPercent = (int)((double)healthRatio / healthScale * 100);
+            info.append(" - ").append(healthPercent).append("%");
+        }
+        
+        // Draw text above NPC
+        Point textLoc = npc.getCanvasTextLocation(
+            graphics,
+            info.toString(),
+            comp.getSize() * 64 + 40
+        );
+        
+        if (textLoc != null) {
+            graphics.setColor(Color.WHITE);
+            graphics.drawString(info.toString(), textLoc.getX(), textLoc.getY());
+        }
+        
+        // Draw hull
+        Shape hull = npc.getConvexHull();
+        if (hull != null) {
+            graphics.setColor(new Color(0, 255, 0, 100));
+            graphics.draw(hull);
+        }
+    }
+    
+    return null;
+}
+```
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Player" icon="user" href="/api/player">
+    Player interface
+  </Card>
+  <Card title="WorldView" icon="globe" href="/api/world">
+    WorldView and scene
+  </Card>
+  <Card title="NPCComposition" icon="book" href="/api/game-objects">
+    NPC definitions
+  </Card>
+  <Card title="Events" icon="bolt" href="/api/event-types">
+    NPC events
+  </Card>
+</CardGroup>

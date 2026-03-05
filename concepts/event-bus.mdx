@@ -1,0 +1,548 @@
+---
+title: 'Event Bus'
+description: 'Understanding the event-driven architecture and EventBus system in RuneLite'
+---
+
+## Overview
+
+RuneLite uses an event-driven architecture centered around the `EventBus`. The EventBus enables loose coupling between components by allowing publishers to post events and subscribers to receive them without direct dependencies.
+
+## EventBus Implementation
+
+The EventBus is a thread-safe, high-performance event distribution system:
+
+```java EventBus.java:50-91
+@Slf4j
+@RequiredArgsConstructor
+@ThreadSafe
+public class EventBus
+{
+    private final Consumer<Throwable> exceptionHandler;
+    
+    @Nonnull
+    private ImmutableMultimap<Class<?>, Subscriber> subscribers = ImmutableMultimap.of();
+    
+    /**
+     * Instantiates EventBus with default exception handler
+     */
+    public EventBus()
+    {
+        this((e) -> log.warn(DEDUPLICATE, "Uncaught exception in event subscriber", e));
+    }
+}
+```
+
+<Note>
+  The EventBus is `@ThreadSafe` and can safely be accessed from multiple threads. Subscribers are stored in an immutable multimap that is atomically replaced on registration changes.
+</Note>
+
+## Subscribing to Events
+
+### Using @Subscribe Annotation
+
+The `@Subscribe` annotation marks methods as event handlers:
+
+```java
+import net.runelite.client.eventbus.Subscribe;
+import net.runelite.api.events.GameTick;
+
+public class ExamplePlugin extends Plugin
+{
+    @Subscribe
+    public void onGameTick(GameTick event)
+    {
+        // Handle game tick event
+    }
+}
+```
+
+### Method Requirements
+
+Event subscriber methods must follow these rules:
+
+```java EventBus.java:117-124
+Preconditions.checkArgument(method.getReturnType() == Void.TYPE, 
+    "@Subscribed method cannot return a value");
+Preconditions.checkArgument(method.getParameterCount() == 1, 
+    "@Subscribed method must take exactly 1 argument");
+Preconditions.checkArgument(!Modifier.isStatic(method.getModifiers()), 
+    "@Subscribed method cannot be static");
+Preconditions.checkArgument(!parameterClazz.isPrimitive(), 
+    "@Subscribed method cannot subscribe to primitives");
+```
+
+<Warning>
+  - Methods must return `void`
+  - Methods must take exactly one parameter (the event)
+  - Methods cannot be static
+  - Event types cannot be primitives or polymorphic
+</Warning>
+
+### Method Naming Convention
+
+By convention, subscriber methods should be named `on` + event name:
+
+```java EventBus.java:134-135
+final String preferredName = "on" + parameterClazz.getSimpleName();
+Preconditions.checkArgument(method.getName().equals(preferredName), 
+    "Subscribed method should be named " + preferredName);
+```
+
+```java
+@Subscribe
+public void onGameTick(GameTick event) { }  // Correct
+
+@Subscribe
+public void handleGameTick(GameTick event) { }  // Will fail validation!
+```
+
+## Event Priority
+
+Subscribers can specify priority to control execution order:
+
+```java Subscribe.java:36-46
+@Retention(RetentionPolicy.RUNTIME)
+@Target(ElementType.METHOD)
+@Documented
+public @interface Subscribe
+{
+    /**
+     * Priority relative to other event subscribers. Higher priorities run first.
+     */
+    float priority() default 0;
+}
+```
+
+### Priority Example
+
+```java
+@Subscribe(priority = 10)
+public void onMenuOptionClicked(MenuOptionClicked event)
+{
+    // This runs BEFORE lower priority subscribers
+    if (shouldBlockClick()) {
+        event.consume(); // Prevent other handlers from seeing this
+    }
+}
+
+@Subscribe(priority = -10)
+public void onMenuOptionClickedLate(MenuOptionClicked event)
+{
+    // This runs AFTER higher priority subscribers
+}
+```
+
+<Info>
+  Higher priority values execute first. Default priority is 0. Subscribers with equal priority execute in alphabetical order by class name.
+</Info>
+
+## Registering and Unregistering
+
+### Automatic Registration
+
+Plugins are automatically registered with the EventBus when started:
+
+```java PluginManager.java:441
+eventBus.register(plugin);
+```
+
+And unregistered when stopped:
+
+```java PluginManager.java:477
+eventBus.unregister(plugin);
+```
+
+### Manual Registration
+
+You can register any object with `@Subscribe` methods:
+
+```java
+public class MyEventHandler
+{
+    @Subscribe
+    public void onChatMessage(ChatMessage event)
+    {
+        // Handle event
+    }
+}
+
+// In your plugin:
+@Inject
+private EventBus eventBus;
+
+private MyEventHandler handler;
+
+@Override
+protected void startUp()
+{
+    handler = new MyEventHandler();
+    eventBus.register(handler);
+}
+
+@Override
+protected void shutDown()
+{
+    eventBus.unregister(handler);
+}
+```
+
+### Lambda Subscription
+
+You can also register lambda handlers:
+
+```java EventBus.java:170-183
+public <T> Subscriber register(Class<T> clazz, Consumer<T> subFn, float priority)
+{
+    final ImmutableMultimap.Builder<Class<?>, Subscriber> builder = ImmutableMultimap.builder();
+    builder.putAll(subscribers);
+    builder.orderValuesBy(Comparator.comparingDouble(Subscriber::getPriority).reversed()
+        .thenComparing(s -> s.object.getClass().getName()));
+    
+    Subscriber sub = new Subscriber(subFn, null, priority, (Consumer<Object>) subFn);
+    builder.put(clazz, sub);
+    
+    subscribers = builder.build();
+    
+    return sub;
+}
+```
+
+Example:
+
+```java
+Subscriber sub = eventBus.register(GameTick.class, 
+    event -> log.info("Tick!"), 
+    0.0f);
+
+// Later, unregister
+eventBus.unregister(sub);
+```
+
+## Posting Events
+
+### Synchronous Posting
+
+Events are posted synchronously - all subscribers are notified immediately:
+
+```java EventBus.java:217-230
+public void post(@Nonnull final Object event)
+{
+    for (final Subscriber subscriber : subscribers.get(event.getClass()))
+    {
+        try
+        {
+            subscriber.invoke(event);
+        }
+        catch (Exception e)
+        {
+            exceptionHandler.accept(e);
+        }
+    }
+}
+```
+
+Example:
+
+```java
+@Inject
+private EventBus eventBus;
+
+public void notifyConfigChanged()
+{
+    ConfigChanged event = new ConfigChanged();
+    event.setGroup("myplugin");
+    event.setKey("setting");
+    event.setNewValue("value");
+    
+    eventBus.post(event);
+    // All subscribers have been notified by the time this returns
+}
+```
+
+<Warning>
+  Event posting is synchronous. If you post an event from the client thread, all handlers will run on the client thread. Be careful not to cause lag!
+</Warning>
+
+## Common Game Events
+
+RuneLite provides numerous game events you can subscribe to:
+
+<AccordionGroup>
+  <Accordion title="Game Lifecycle Events">
+    - `GameTick` - Every game tick (~600ms)
+    - `GameStateChanged` - Login, logout, loading, etc.
+    - `ClientTick` - Client update (50Hz)
+    - `FocusChanged` - Window focus changed
+  </Accordion>
+  
+  <Accordion title="Player Events">
+    - `PlayerSpawned` - Player appears
+    - `PlayerDespawned` - Player disappears
+    - `PlayerChanged` - Player data updated
+    - `AnimationChanged` - Player animation changed
+    - `InteractingChanged` - Player interaction changed
+  </Accordion>
+  
+  <Accordion title="NPC Events">
+    - `NpcSpawned` - NPC appears
+    - `NpcDespawned` - NPC disappears
+    - `NpcChanged` - NPC transformed
+    - `NpcDeath` - NPC died
+  </Accordion>
+  
+  <Accordion title="Item Events">
+    - `ItemContainerChanged` - Inventory/equipment changed
+    - `ItemSpawned` - Ground item appears
+    - `ItemDespawned` - Ground item disappears
+    - `ItemQuantityChanged` - Item stack size changed
+  </Accordion>
+  
+  <Accordion title="Chat Events">
+    - `ChatMessage` - Chat message received
+    - `OverheadTextChanged` - Overhead text changed
+  </Accordion>
+  
+  <Accordion title="Interface Events">
+    - `WidgetLoaded` - Interface loaded
+    - `WidgetClosed` - Interface closed
+    - `MenuOptionClicked` - Menu option clicked
+    - `MenuOpened` - Right-click menu opened
+  </Accordion>
+  
+  <Accordion title="World Events">
+    - `WorldChanged` - Switched worlds
+    - `GraphicsObjectCreated` - Graphics object spawned
+    - `ProjectileMoved` - Projectile updated
+    - `GroundObjectSpawned` - Ground object spawned
+  </Accordion>
+</AccordionGroup>
+
+## Event Examples
+
+### Responding to Game Ticks
+
+```java
+private int tickCounter = 0;
+
+@Subscribe
+public void onGameTick(GameTick event)
+{
+    tickCounter++;
+    
+    if (tickCounter % 10 == 0) {
+        log.info("{} ticks have passed", tickCounter);
+    }
+}
+```
+
+### Tracking Player Combat
+
+```java
+@Subscribe
+public void onInteractingChanged(InteractingChanged event)
+{
+    if (event.getSource() == client.getLocalPlayer())
+    {
+        Actor target = event.getTarget();
+        if (target instanceof NPC)
+        {
+            log.info("Started attacking: {}", ((NPC) target).getName());
+        }
+    }
+}
+```
+
+### Monitoring Inventory Changes
+
+```java
+@Subscribe
+public void onItemContainerChanged(ItemContainerChanged event)
+{
+    if (event.getContainerId() == InventoryID.INVENTORY.getId())
+    {
+        ItemContainer inventory = event.getItemContainer();
+        log.info("Inventory contains {} items", inventory.count());
+    }
+}
+```
+
+### Filtering Chat Messages
+
+```java
+@Subscribe(priority = 100)  // High priority to intercept first
+public void onChatMessage(ChatMessage event)
+{
+    if (event.getType() == ChatMessageType.PUBLICCHAT)
+    {
+        String message = event.getMessage();
+        if (message.contains("spam"))
+        {
+            // Block this message from other plugins
+            event.consume();
+        }
+    }
+}
+```
+
+### Modifying Menu Entries
+
+```java
+@Subscribe
+public void onMenuOpened(MenuOpened event)
+{
+    MenuEntry[] entries = event.getMenuEntries();
+    
+    // Add custom menu entry
+    MenuEntry customEntry = client.createMenuEntry(-1)
+        .setOption("Custom Action")
+        .setTarget("<col=ff0000>Target</col>")
+        .setType(MenuAction.RUNELITE)
+        .onClick(e -> handleCustomAction());
+}
+```
+
+## Performance Optimization
+
+The EventBus uses several optimizations:
+
+<Steps>
+  <Step title="Lambda Metafactory">
+    Subscriber methods are converted to lambdas using `LambdaMetafactory` for faster invocation:
+    
+    ```java EventBus.java:140-159
+    try
+    {
+        final MethodHandles.Lookup caller = ReflectUtil.privateLookupIn(clazz);
+        final MethodType subscription = MethodType.methodType(void.class, parameterClazz);
+        final MethodHandle target = caller.findVirtual(clazz, method.getName(), subscription);
+        final CallSite site = LambdaMetafactory.metafactory(
+            caller,
+            "accept",
+            MethodType.methodType(Consumer.class, clazz),
+            subscription.changeParameterType(0, Object.class),
+            target,
+            subscription);
+        
+        final MethodHandle factory = site.getTarget();
+        lambda = (Consumer<Object>) factory.bindTo(object).invokeExact();
+    }
+    catch (Throwable e)
+    {
+        log.warn("Unable to create lambda for method {}", method, e);
+    }
+    ```
+  </Step>
+  
+  <Step title="Immutable Collections">
+    Subscriber lists use Guava's `ImmutableMultimap` which is very fast for read-heavy workloads
+  </Step>
+  
+  <Step title="Pre-sorted Subscribers">
+    Subscribers are sorted by priority and class name once during registration, not on every event post
+  </Step>
+  
+  <Step title="Type-Safe Dispatch">
+    Events are dispatched only to subscribers of the exact event class - no inheritance checking
+  </Step>
+</Steps>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Keep Event Handlers Fast">
+    Event handlers should complete quickly. For expensive operations, schedule them on a background thread:
+    
+    ```java
+    @Inject
+    private ScheduledExecutorService executor;
+    
+    @Subscribe
+    public void onGameTick(GameTick event)
+    {
+        executor.submit(() -> {
+            // Expensive operation here
+        });
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Handle Exceptions">
+    Always catch and log exceptions - don't let them propagate:
+    
+    ```java
+    @Subscribe
+    public void onChatMessage(ChatMessage event)
+    {
+        try
+        {
+            processMessage(event);
+        }
+        catch (Exception e)
+        {
+            log.error("Error processing message", e);
+        }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Be Careful with State">
+    Events can arrive at unexpected times. Ensure your state is consistent:
+    
+    ```java
+    @Subscribe
+    public void onNpcSpawned(NpcSpawned event)
+    {
+        if (client.getGameState() != GameState.LOGGED_IN) {
+            return; // Ignore events when not logged in
+        }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Use Priority Sparingly">
+    Only use custom priority when you truly need to run before/after other plugins. Default priority (0) is fine for most cases.
+  </Accordion>
+  
+  <Accordion title="Clean Up on Shutdown">
+    If you manually register objects, unregister them in `shutDown()`:
+    
+    ```java
+    @Override
+    protected void shutDown()
+    {
+        if (handler != null) {
+            eventBus.unregister(handler);
+        }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Deferred Event Bus
+
+RuneLite also provides a `DeferredEventBus` for events that should be queued:
+
+```java
+@Inject
+@Named("Deferred EventBus")
+private EventBus deferredEventBus;
+```
+
+This is useful for events that need to be processed after the current event batch completes.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Plugin System" href="/concepts/plugin-system" icon="plug">
+    Learn how plugins integrate with the EventBus
+  </Card>
+  <Card title="API Events" href="/api/event-types" icon="list">
+    Browse all available game events
+  </Card>
+  <Card title="Event Handling" href="/api/event-handling" icon="plus">
+    Learn how to handle events in plugins
+  </Card>
+  <Card title="Plugin Examples" href="/plugins/examples" icon="code">
+    See real plugin code examples
+  </Card>
+</CardGroup>

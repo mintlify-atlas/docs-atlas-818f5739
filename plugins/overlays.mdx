@@ -1,0 +1,84 @@
+---
+title: "Creating Overlays"
+description: "Build custom UI overlays for your RuneLite plugins"
+---
+
+## Overview
+
+Overlays render custom UI elements on top of the game client. They're perfect for displaying information, highlighting objects, or creating custom interfaces.
+
+## Basic Overlay
+
+```java MyOverlay.java
+package net.runelite.client.plugins.myplugin;
+
+import java.awt.Dimension;
+import java.awt.Graphics2D;
+import javax.inject.Inject;
+import net.runelite.api.Client;
+import net.runelite.client.ui.overlay.Overlay;
+import net.runelite.client.ui.overlay.OverlayPosition;
+
+public class MyOverlay extends Overlay
+{
+    private final Client client;
+    private final MyPlugin plugin;
+
+    @Inject
+    public MyOverlay(Client client, MyPlugin plugin)
+    {
+        this.client = client;
+        this.plugin = plugin;
+        setPosition(OverlayPosition.TOP_LEFT);
+    }
+
+    @Override
+    public Dimension render(Graphics2D graphics)
+    {
+        // Render your overlay here
+        graphics.drawString("Hello World", 10, 20);
+        return null;
+    }
+}
+```
+
+## Registering Overlays
+
+```java
+@Inject
+private OverlayManager overlayManager;
+
+@Inject
+private MyOverlay overlay;
+
+@Override
+protected void startUp()
+{
+    overlayManager.add(overlay);
+}
+
+@Override
+protected void shutDown()
+{
+    overlayManager.remove(overlay);
+}
+```
+
+## Overlay Positions
+
+- `TOP_LEFT` - Top left corner
+- `TOP_CENTER` - Top center
+- `TOP_RIGHT` - Top right corner
+- `ABOVE_CHATBOX_RIGHT` - Above chatbox
+- `DYNAMIC` - Custom positioning
+
+## Related
+
+<CardGroup cols={2}>
+  <Card title="UI Overlays Concept" icon="layer-group" href="/concepts/ui-overlays">
+    Learn about overlay architecture
+  </Card>
+  <Card title="Creating Plugins" icon="plus" href="/plugins/creating-plugins">
+    Plugin creation basics
+  </Card>
+</CardGroup>

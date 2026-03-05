@@ -1,0 +1,647 @@
+---
+title: 'Configuration Management'
+description: 'How to manage persistent settings and configuration in RuneLite'
+---
+
+## Overview
+
+RuneLite's configuration system provides persistent storage for plugin settings, with support for multiple profiles, account-specific settings, and automatic synchronization. The `ConfigManager` handles all configuration operations.
+
+## Configuration Architecture
+
+### ConfigManager
+
+The `ConfigManager` is the central component for configuration:
+
+```java ConfigManager.java:94-158
+@Singleton
+@Slf4j
+public class ConfigManager
+{
+    private final String configProfileName;
+    private final ScheduledExecutorService executor;
+    private final EventBus eventBus;
+    private final Client client;
+    private final Gson gson;
+    private final ConfigClient configClient;
+    private final ProfileManager profileManager;
+    private final SessionManager sessionManager;
+    
+    private ConfigProfile profile;
+    private ConfigProfile rsProfile;
+    private ConfigData configProfile;
+    private ConfigData rsProfileConfigProfile;
+    
+    @Inject
+    private ConfigManager(
+        @Nullable @Named("profile") String profile,
+        ScheduledExecutorService scheduledExecutorService,
+        EventBus eventBus,
+        Client client,
+        Gson gson,
+        ConfigClient configClient,
+        ProfileManager profileManager,
+        SessionManager sessionManager
+    )
+    {
+        this.configProfileName = profile;
+        this.executor = scheduledExecutorService;
+        this.eventBus = eventBus;
+        this.client = client;
+        this.gson = gson;
+        this.configClient = configClient;
+        this.profileManager = profileManager;
+        this.sessionManager = sessionManager;
+        
+        // Auto-save every 5 minutes
+        scheduledExecutorService.scheduleWithFixedDelay(
+            RunnableExceptionLogger.wrap(this::sendConfig), 
+            30 + (int) (5 * 60 * Math.random()), 
+            5 * 60, 
+            TimeUnit.SECONDS);
+    }
+}
+```
+
+<Note>
+  Configuration is automatically saved every 5 minutes and on shutdown. Manual saves are rarely needed.
+</Note>
+
+## Storage Format
+
+Configuration is stored as key-value pairs:
+
+```
+group.key=value
+group.profile.key=value  // Account-specific
+```
+
+Example:
+```properties
+runelite.gameAlwaysOnTop=true
+grounditems.highlightedItems=Ranarr seed,Snapdragon seed
+rsprofile.rsprofile.QUFBQUFB.accountHash=123456789
+```
+
+## Creating a Config Interface
+
+### Basic Config
+
+Define a configuration interface annotated with `@ConfigGroup`:
+
+```java
+import net.runelite.client.config.Config;
+import net.runelite.client.config.ConfigGroup;
+import net.runelite.client.config.ConfigItem;
+
+@ConfigGroup("exampleplugin")
+public interface ExampleConfig extends Config
+{
+    @ConfigItem(
+        keyName = "enabled",
+        name = "Enable notifications",
+        description = "Show notifications for events"
+    )
+    default boolean enableNotifications()
+    {
+        return true;
+    }
+    
+    @ConfigItem(
+        keyName = "threshold",
+        name = "Alert threshold",
+        description = "Minimum value to trigger alerts"
+    )
+    default int alertThreshold()
+    {
+        return 100;
+    }
+    
+    @ConfigItem(
+        keyName = "message",
+        name = "Custom message",
+        description = "Message to display"
+    )
+    default String customMessage()
+    {
+        return "Hello!";
+    }
+}
+```
+
+### Using Config in Plugins
+
+Inject the config through ConfigManager:
+
+```java
+@Inject
+private ConfigManager configManager;
+
+private ExampleConfig config;
+
+@Override
+protected void startUp()
+{
+    config = configManager.getConfig(ExampleConfig.class);
+    
+    // Read settings
+    if (config.enableNotifications())
+    {
+        int threshold = config.alertThreshold();
+        String message = config.customMessage();
+        log.info("Alerts enabled: threshold={}, message={}", threshold, message);
+    }
+}
+```
+
+<Info>
+  Config methods return the current value or the default if not set. Changes are automatically picked up through `ConfigChanged` events.
+</Info>
+
+## Supported Config Types
+
+The ConfigManager supports serialization of many types:
+
+```java ConfigManager.java:1160-1270
+Object stringToObject(String str, Type type)
+{
+    if (type == boolean.class || type == Boolean.class) {
+        return Boolean.parseBoolean(str);
+    }
+    if (type == int.class || type == Integer.class) {
+        return Integer.parseInt(str);
+    }
+    if (type == long.class || type == Long.class) {
+        return Long.parseLong(str);
+    }
+    if (type == double.class || type == Double.class) {
+        return Double.parseDouble(str);
+    }
+    if (type == Color.class) {
+        return ColorUtil.fromString(str);
+    }
+    if (type == Dimension.class) {
+        String[] splitStr = str.split("x");
+        return new Dimension(Integer.parseInt(splitStr[0]), Integer.parseInt(splitStr[1]));
+    }
+    if (type == Point.class) {
+        String[] splitStr = str.split(":");
+        return new Point(Integer.parseInt(splitStr[0]), Integer.parseInt(splitStr[1]));
+    }
+    if (type instanceof Class && ((Class<?>) type).isEnum()) {
+        return Enum.valueOf((Class<? extends Enum>) type, str);
+    }
+    if (type == Instant.class) {
+        return Instant.parse(str);
+    }
+    if (type == Duration.class) {
+        return Duration.ofMillis(Long.parseLong(str));
+    }
+    // ... more types
+}
+```
+
+### Supported Types
+
+| Type | Example | Format |
+|------|---------|--------|
+| `boolean` | `true` | String "true" or "false" |
+| `int` | `42` | String number |
+| `long` | `1234567890L` | String number |
+| `double` | `3.14` | String decimal |
+| `String` | `"Hello"` | Raw string |
+| `Color` | `Color.RED` | RGB integer |
+| `Dimension` | `new Dimension(100, 50)` | "100x50" |
+| `Point` | `new Point(10, 20)` | "10:20" |
+| `Rectangle` | `new Rectangle(0,0,100,50)` | "0:0:100:50" |
+| `Enum` | `MyEnum.VALUE` | Enum name |
+| `Instant` | `Instant.now()` | ISO-8601 |
+| `Duration` | `Duration.ofMinutes(5)` | Milliseconds |
+| `WorldPoint` | `new WorldPoint(3200, 3200, 0)` | "3200:3200:0" |
+| `Set<?>` | `Set.of("a", "b")` | JSON array |
+| `byte[]` | byte array | Base64 |
+
+## Reading Configuration
+
+### Using Config Interface
+
+The recommended approach is using a config interface:
+
+```java
+@Inject
+private ConfigManager configManager;
+
+private ExampleConfig config;
+
+@Override
+protected void startUp()
+{
+    config = configManager.getConfig(ExampleConfig.class);
+    boolean enabled = config.enableNotifications();
+}
+```
+
+### Direct Access
+
+For dynamic keys, use ConfigManager directly:
+
+```java
+String value = configManager.getConfiguration("groupName", "keyName");
+
+// With type conversion
+Integer intValue = configManager.getConfiguration("groupName", "keyName", Integer.class);
+Color color = configManager.getConfiguration("groupName", "color", Color.class);
+```
+
+## Writing Configuration
+
+### Direct Setting
+
+```java
+// String value
+configManager.setConfiguration("groupName", "keyName", "value");
+
+// Type conversion
+configManager.setConfiguration("groupName", "count", 42);
+configManager.setConfiguration("groupName", "color", Color.RED);
+configManager.setConfiguration("groupName", "position", new Point(10, 20));
+```
+
+### Unsetting Values
+
+```java
+// Revert to default
+configManager.unsetConfiguration("groupName", "keyName");
+```
+
+<Warning>
+  Unsetting a configuration returns it to the default value defined in the config interface. It doesn't delete the key entirely.
+</Warning>
+
+## Account-Specific Configuration
+
+RuneLite supports per-character configuration:
+
+### RS Profile Configuration
+
+```java
+// Set account-specific config
+configManager.setRSProfileConfiguration("groupName", "key", value);
+
+// Get account-specific config
+String value = configManager.getRSProfileConfiguration("groupName", "key");
+Integer intValue = configManager.getRSProfileConfiguration("groupName", "key", Integer.class);
+
+// Unset account-specific config
+configManager.unsetRSProfileConfiguration("groupName", "key");
+```
+
+### How RS Profiles Work
+
+RuneLite automatically creates a profile for each account you log into:
+
+```java ConfigManager.java:1498-1552
+private synchronized RuneScapeProfile findRSProfile(
+    List<RuneScapeProfile> profiles, 
+    long accountHash, 
+    RuneScapeProfileType type, 
+    String displayName, 
+    boolean create)
+{
+    if (accountHash == RuneScapeProfile.ACCOUNT_HASH_INVALID) {
+        return null;
+    }
+    
+    List<RuneScapeProfile> matches = profiles.stream()
+        .filter(p -> p.getType() == type && accountHash == p.getAccountHash())
+        .collect(Collectors.toList());
+    
+    if (matches.size() >= 1) {
+        return matches.get(0);
+    }
+    
+    if (!create) {
+        return null;
+    }
+    
+    // Generate deterministic key from account hash
+    byte[] key = {
+        (byte) accountHash,
+        (byte) (accountHash >> 8),
+        (byte) (accountHash >> 16),
+        (byte) (accountHash >> 24),
+        (byte) (accountHash >> 32),
+        (byte) (accountHash >> 40),
+    };
+    key[0] += type.ordinal();
+    
+    String keyStr = RSPROFILE_GROUP + "." + Base64.getUrlEncoder().encodeToString(key);
+    
+    setConfiguration(RSPROFILE_GROUP, keyStr, RSPROFILE_ACCOUNT_HASH, accountHash);
+    setConfiguration(RSPROFILE_GROUP, keyStr, RSPROFILE_TYPE, type);
+    if (displayName != null) {
+        setConfiguration(RSPROFILE_GROUP, keyStr, RSPROFILE_DISPLAY_NAME, displayName);
+    }
+    
+    return new RuneScapeProfile(displayName, type, accountHash, keyStr);
+}
+```
+
+<Note>
+  RS profiles are created automatically on first use. You don't need to manually manage them.
+</Note>
+
+## Configuration Profiles
+
+RuneLite supports multiple configuration profiles:
+
+### Profile Structure
+
+```java
+public class ConfigProfile
+{
+    private long id;                    // Unique profile ID
+    private String name;                // Profile name
+    private boolean active;             // Currently active
+    private boolean sync;               // Sync with cloud
+    private long rev;                   // Revision number
+    private List<String> defaultForRsProfiles;  // Auto-select for accounts
+}
+```
+
+### Switching Profiles
+
+```java ConfigManager.java:160-242
+public void switchProfile(ConfigProfile newProfile)
+{
+    if (newProfile.getId() == profile.getId()) {
+        return;
+    }
+    
+    // Ensure existing config is saved
+    sendConfig();
+    
+    log.info("Switching profile to: {} ({})", newProfile.getName(), newProfile.getId());
+    
+    ConfigData newData = new ConfigData(ProfileManager.profileConfigFile(newProfile));
+    Set<String> allKeys = new HashSet<>(newData.keySet());
+    
+    synchronized (this) {
+        handler.invalidate();
+        oldData = configProfile;
+        profile = newProfile;
+        configProfile = newData;
+    }
+    
+    allKeys.addAll(oldData.keySet());
+    
+    // Fire ConfigChanged events for all changed keys
+    for (String wholeKey : allKeys) {
+        String[] split = splitKey(wholeKey);
+        String oldValue = oldData.getProperty(wholeKey);
+        String newValue = newData.getProperty(wholeKey);
+        
+        if (Objects.equals(oldValue, newValue)) {
+            continue;
+        }
+        
+        ConfigChanged configChanged = new ConfigChanged();
+        configChanged.setGroup(split[KEY_SPLITTER_GROUP]);
+        configChanged.setKey(split[KEY_SPLITTER_KEY]);
+        configChanged.setOldValue(oldValue);
+        configChanged.setNewValue(newValue);
+        eventBus.post(configChanged);
+    }
+    
+    eventBus.post(new ProfileChanged());
+}
+```
+
+## Listening for Changes
+
+Subscribe to `ConfigChanged` events:
+
+```java
+@Subscribe
+public void onConfigChanged(ConfigChanged event)
+{
+    if (!event.getGroup().equals("exampleplugin")) {
+        return;
+    }
+    
+    switch (event.getKey())
+    {
+        case "enabled":
+            boolean enabled = Boolean.parseBoolean(event.getNewValue());
+            log.info("Notifications enabled: {}", enabled);
+            break;
+            
+        case "threshold":
+            int threshold = Integer.parseInt(event.getNewValue());
+            log.info("Threshold changed to: {}", threshold);
+            break;
+    }
+}
+```
+
+<Info>
+  `ConfigChanged` events are fired whenever configuration values change, including when profiles are switched.
+</Info>
+
+## Configuration UI
+
+### Config Item Annotations
+
+Customize how config items appear in the UI:
+
+```java
+@ConfigItem(
+    keyName = "color",
+    name = "Highlight Color",
+    description = "Color to use for highlighting",
+    position = 1
+)
+default Color highlightColor()
+{
+    return Color.RED;
+}
+
+@Range(min = 1, max = 100)
+@ConfigItem(
+    keyName = "size",
+    name = "Size",
+    description = "Size of the overlay",
+    position = 2
+)
+default int overlaySize()
+{
+    return 50;
+}
+
+@Alpha
+@ConfigItem(
+    keyName = "bgColor",
+    name = "Background",
+    description = "Background color with transparency",
+    position = 3
+)
+default Color backgroundColor()
+{
+    return new Color(0, 0, 0, 128);
+}
+```
+
+### Config Sections
+
+Group related settings:
+
+```java
+@ConfigSection(
+    name = "General",
+    description = "General settings",
+    position = 0
+)
+String generalSection = "general";
+
+@ConfigSection(
+    name = "Advanced",
+    description = "Advanced settings",
+    position = 1,
+    closedByDefault = true
+)
+String advancedSection = "advanced";
+
+@ConfigItem(
+    keyName = "enabled",
+    name = "Enable",
+    description = "Enable the plugin",
+    section = generalSection
+)
+default boolean isEnabled()
+{
+    return true;
+}
+```
+
+## Default Configuration
+
+RuneLite automatically sets defaults from config interface methods:
+
+```java ConfigManager.java:1081-1158
+public <T extends Config> void setDefaultConfiguration(T proxy, boolean override)
+{
+    Class<?> clazz = proxy.getClass().getInterfaces()[0];
+    ConfigGroup group = clazz.getAnnotation(ConfigGroup.class);
+    
+    for (Method method : clazz.getDeclaredMethods())
+    {
+        ConfigItem item = method.getAnnotation(ConfigItem.class);
+        
+        if (item == null || method.getParameterCount() != 0) {
+            continue;
+        }
+        
+        if (!method.isDefault()) {
+            if (override) {
+                String current = getConfiguration(group.value(), item.keyName());
+                if (current != null) {
+                    unsetConfiguration(group.value(), item.keyName());
+                }
+            }
+            continue;
+        }
+        
+        if (!override) {
+            Object current = getConfiguration(group.value(), item.keyName(), 
+                method.getGenericReturnType());
+            if (current != null) {
+                continue;
+            }
+        }
+        
+        Object defaultValue = ConfigInvocationHandler.callDefaultMethod(proxy, method, null);
+        String valueString = objectToString(defaultValue);
+        
+        if (Strings.isNullOrEmpty(valueString)) {
+            unsetConfiguration(group.value(), item.keyName());
+        } else {
+            setConfiguration(group.value(), item.keyName(), valueString);
+        }
+    }
+}
+```
+
+<Note>
+  Default values are set automatically when the plugin loads. Users only see non-default values in their config file.
+</Note>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Config Interfaces">
+    Always define a config interface rather than using string keys directly. This provides type safety and automatic UI generation.
+  </Accordion>
+  
+  <Accordion title="Provide Good Defaults">
+    Choose sensible default values so the plugin works well out-of-the-box.
+  </Accordion>
+  
+  <Accordion title="Cache Config Values">
+    If you read the same config value frequently, cache it:
+    
+    ```java
+    private boolean notificationsEnabled;
+    
+    @Override
+    protected void startUp() {
+        notificationsEnabled = config.enableNotifications();
+    }
+    
+    @Subscribe
+    public void onConfigChanged(ConfigChanged event) {
+        if (event.getGroup().equals("myplugin") && 
+            event.getKey().equals("enabled")) {
+            notificationsEnabled = Boolean.parseBoolean(event.getNewValue());
+        }
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Use Account-Specific Config Appropriately">
+    Use RS profile config for account-specific settings like tracked items or character state. Use regular config for general preferences.
+  </Accordion>
+  
+  <Accordion title="Validate Input">
+    When users can enter free-form values, validate them:
+    
+    ```java
+    @Subscribe
+    public void onConfigChanged(ConfigChanged event) {
+        if (event.getKey().equals("url")) {
+            try {
+                new URL(event.getNewValue());
+            } catch (MalformedURLException e) {
+                log.warn("Invalid URL in config: {}", event.getNewValue());
+            }
+        }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Plugin System" href="/concepts/plugin-system" icon="plug">
+    Learn how to create plugins with configuration
+  </Card>
+  <Card title="Config Examples" href="/examples/configuration" icon="code">
+    See more configuration examples
+  </Card>
+  <Card title="UI Components" href="/ui/config-panel" icon="sliders">
+    Customize config panel appearance
+  </Card>
+  <Card title="Profile Management" href="/guides/profiles" icon="user">
+    Advanced profile configuration
+  </Card>
+</CardGroup>
